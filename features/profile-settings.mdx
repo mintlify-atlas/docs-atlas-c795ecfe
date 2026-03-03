@@ -1,0 +1,217 @@
+---
+title: Profile and settings
+description: Manage your account, preferences, and app configuration
+---
+
+# Profile and settings
+
+The profile screen is your control center for personalizing Kafka, managing your account, and configuring app behavior.
+
+## Accessing the profile
+
+Tap the profile icon in the top bar (visible from most screens) to open your profile and settings.
+
+## User information
+
+When signed in, your profile displays:
+
+- **Display name**: Your account name
+- **User avatar**: Profile photo (from Google or Firebase)
+- **App version**: Current Kafka version number
+
+<Note>
+  If you're not signed in, you'll see a login prompt with rationale for creating an account.
+</Note>
+
+## Quick actions
+
+### For signed-in users
+
+<Steps>
+  <Step title="Go to Favorites">
+    Quick link to view all your favorited items
+  </Step>
+  <Step title="Go to Library">
+    Direct access to your downloads and saved content
+  </Step>
+</Steps>
+
+### For guests
+
+<Steps>
+  <Step title="Login">
+    Sign in with Google or email to sync favorites and access personalized features
+  </Step>
+</Steps>
+
+## Settings and preferences
+
+The profile menu provides access to all app settings:
+
+### Theme settings
+
+#### Theme selection
+
+Choose your preferred color scheme:
+
+- **Light**: Light background with dark text
+- **Dark**: Dark background with light text
+- **System**: Automatically matches your device theme
+
+Tap "Change theme" to cycle through options. Current theme is displayed next to the menu item.
+
+#### True Contrast mode
+
+<Info>
+  True Contrast is an enhanced high-contrast mode for improved readability. This feature may be enabled or disabled via remote configuration.
+</Info>
+
+When available:
+- Toggle the switch to enable/disable
+- Increases contrast between text and backgrounds
+- Helpful for reading in bright conditions
+- Works with both light and dark themes
+
+### Content preferences
+
+#### Safe Mode
+
+Control the visibility of adult content:
+
+- **Enabled**: Adult content is hidden from search and browse
+- **Disabled**: All content is shown (adult content is visible)
+
+<Steps>
+  <Step title="Open Profile">
+    Tap the profile icon in the top bar
+  </Step>
+  <Step title="Find Safe Mode">
+    Scroll to the Safe Mode setting
+  </Step>
+  <Step title="Toggle switch">
+    Turn the switch on to hide adult content, off to show all content
+  </Step>
+</Steps>
+
+The current status is displayed below the setting name:
+- "Adult content is hidden" (Safe Mode on)
+- "Adult content is shown" (Safe Mode off)
+
+#### Notifications
+
+Manage notification preferences:
+
+- Opens your device's system notification settings for Kafka
+- Control which types of notifications you receive
+- Set notification sounds and vibration
+- Platform-specific options
+
+### Feedback and support
+
+#### Send Feedback
+
+Share your thoughts, report issues, or suggest features:
+
+<Steps>
+  <Step title="Open feedback form">
+    Tap "Send Feedback" in the profile menu
+  </Step>
+  <Step title="Write your feedback">
+    Enter your message in the feedback text field
+  </Step>
+  <Step title="Add email (optional)">
+    Provide your email if you'd like a response
+  </Step>
+  <Step title="Submit">
+    Tap submit to send your feedback to the Kafka team
+  </Step>
+</Steps>
+
+Your feedback is stored in Firebase and helps improve Kafka for everyone.
+
+<Tip>
+  Including your email allows the development team to follow up with you about your feedback or bug reports.
+</Tip>
+
+## Account management
+
+### Logout
+
+For signed-in users only:
+
+1. Tap "Logout" at the bottom of the profile menu
+2. Confirm you want to sign out
+3. You'll be signed out and returned to guest mode
+
+<Warning>
+  Logging out doesn't delete your favorites from the cloud, but you won't see them on this device until you sign back in.
+</Warning>
+
+### Benefits of signing in
+
+Create an account to unlock:
+
+- **Cloud sync**: Favorites sync across all your devices
+- **Personalized recommendations**: Better content suggestions based on your history
+- **Cross-device continuity**: Resume reading/listening on any device
+- **Backup**: Your library is backed up to the cloud
+
+## Feature flags and remote config
+
+Many Kafka features are controlled via remote configuration, allowing the development team to:
+
+- Enable/disable features for testing
+- Roll out features gradually
+- Customize experience for different users
+- Respond quickly to issues
+
+<Info>
+  Features like True Contrast, AI summaries, and certain UI elements may be enabled or disabled remotely. These changes happen without app updates.
+</Info>
+
+## Profile menu structure
+
+The complete profile menu includes:
+
+1. **Change theme** - Cycle through Light/Dark/System
+2. **True Contrast** - Toggle high-contrast mode (if enabled)
+3. **Notifications** - Open system notification settings
+4. **Safe Mode** - Hide/show adult content
+5. **Send Feedback** - Submit feedback to developers
+6. **Logout** - Sign out of your account (authenticated users only)
+
+Each menu item shows:
+- Icon representing the function
+- Title of the setting
+- Description or current value (when applicable)
+- Toggle switch or navigation indicator
+
+## Visual customization
+
+### Material You dynamic colors
+
+Kafka supports Material 3 with dynamic color theming:
+- Colors adapt to your device wallpaper (Android 12+)
+- Consistent color palette throughout the app
+- Item detail pages can extract colors from cover images
+
+### Responsive layouts
+
+The profile screen adapts to:
+- Phone displays (portrait and landscape)
+- Tablet screens (optimized wide layouts)
+- Different screen sizes and aspect ratios
+
+## Best practices
+
+<Accordion title="Optimizing battery life">
+  Use Dark theme to reduce battery consumption on OLED screens. The system theme option automatically switches based on time of day.
+</Accordion>
+
+<Accordion title="Managing privacy">
+  Enable Safe Mode if you share your device with others or prefer not to see adult content in search results and recommendations.
+</Accordion>
+
+<Accordion title="Providing feedback">
+  When reporting bugs, include specific steps to reproduce the issue and mention what you were trying to do. Screenshots are helpful but can be shared via other channels since the feedback form is text-only.
+</Accordion>

@@ -1,0 +1,225 @@
+---
+title: AI-powered summaries
+description: Get quick insights with AI-generated book summaries
+---
+
+# AI-powered summaries
+
+Kafka offers AI-generated summaries for books, helping you quickly understand a book's content before committing to reading it.
+
+## Overview
+
+The AI summary feature uses OpenAI's language models to generate concise, informative summaries of books. This helps you:
+
+- **Decide what to read**: Get an overview before diving into a long book
+- **Recall content**: Refresh your memory about books you've read
+- **Discover themes**: Understand key topics and themes quickly
+- **Save time**: Get insights without reading full descriptions
+
+<Note>
+  AI summaries are powered by OpenAI and are available for select text items. This feature can be enabled or disabled via remote configuration.
+</Note>
+
+## Accessing summaries
+
+To view an AI-generated summary:
+
+<Steps>
+  <Step title="Open an item detail page">
+    Navigate to any book or text item
+  </Step>
+  <Step title="Look for the summary button">
+    Find the "Read Summary" button (appears for eligible items)
+  </Step>
+  <Step title="Tap to view">
+    Tap the button to open the summary screen
+  </Step>
+</Steps>
+
+## Summary display
+
+The summary screen shows:
+
+### Header information
+
+- **Book title**: Displayed prominently in primary color
+- **Author/Creator**: Clickable link to view more works by this creator
+- **Divider**: Visual separation between header and content
+
+### Summary content
+
+The AI-generated summary is displayed with:
+
+- **Markdown formatting**: Proper structure with headings, lists, and paragraphs
+- **Custom typography**: Optimized for readability
+  - Appropriate line height
+  - Comfortable font sizes
+  - Material Design typography scale
+- **Scrollable content**: Summary can be as long as needed
+
+### Navigation
+
+- **Back button**: Return to the item detail page
+- **Scroll**: Swipe up/down to read the full summary
+- **Creator link**: Tap the author name to browse their other works
+
+## How it works
+
+### AI generation process
+
+1. **Request triggered**: When you tap "Read Summary", Kafka requests a summary from OpenAI
+2. **Content analysis**: The AI analyzes the book's metadata and available text
+3. **Summary creation**: A concise summary is generated highlighting:
+   - Main themes and topics
+   - Key concepts or arguments
+   - Genre and style
+   - Notable aspects or significance
+4. **Display**: The summary is formatted and displayed in the app
+
+### OpenAI integration
+
+Kafka integrates with OpenAI's API:
+- API key configured via Firebase Remote Config
+- Secure, server-side API calls
+- Content moderation and filtering
+- Error handling for API issues
+
+<Info>
+  The OpenAI API key and summary generation settings are managed remotely, allowing the feature to be configured without app updates.
+</Info>
+
+## Availability
+
+### When summaries are available
+
+AI summaries are shown when:
+
+- The item is a text/book (not audio)
+- The feature is enabled via remote config
+- Sufficient metadata is available
+- OpenAI API is accessible
+
+### When summaries aren't available
+
+The summary button may not appear if:
+
+- The item is an audiobook (audio-only)
+- The feature is disabled remotely
+- The item lacks necessary metadata
+- API quota or connectivity issues
+
+## Feature configuration
+
+The AI summary feature is controlled by:
+
+### Remote config flags
+
+- `summary_enabled`: Master toggle for the feature
+- `open_ai_api_key`: API authentication
+
+### Firebase integration
+
+Summaries are:
+- Generated on-demand
+- May be cached for performance
+- Logged for analytics
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Using summaries effectively">
+    Read the summary first to determine if a book matches your interests. Summaries are especially helpful for non-fiction, academic texts, or deciding between similar books.
+  </Accordion>
+  
+  <Accordion title="Understanding AI limitations">
+    AI-generated summaries are helpful overviews but may not capture every nuance. They work best as a starting point, not a replacement for reading the actual book.
+  </Accordion>
+  
+  <Accordion title="Combining with other features">
+    Use summaries alongside subject tags, ratings, and descriptions to make informed reading choices. Check the creator's other works to understand their style.
+  </Accordion>
+</AccordionGroup>
+
+## Technical details
+
+### Implementation
+
+Location: `~/workspace/source/ui/summary/`
+
+Key components:
+- **SummaryScreen.kt**: Main UI component
+- **SummaryViewModel**: State management and data fetching
+- **Markdown rendering**: Using mikepenz/markdown-m3 library
+- **Typography**: Custom styles for enhanced readability
+
+### Data model
+
+```kotlin
+data class SummaryState(
+    val title: String = "",
+    val creator: String? = null,
+    val summary: Summary? = null,
+    val isLoading: Boolean = false
+)
+
+data class Summary(
+    val content: String
+)
+```
+
+### Typography customization
+
+The summary uses custom typography for:
+- Headings (h1-h6)
+- Body text
+- Code blocks
+- Lists and quotes
+
+Optimized for:
+- Line spacing for readability
+- Comfortable font sizes
+- Clear hierarchy
+- Material Design integration
+
+## Future enhancements
+
+Potential improvements being considered:
+
+- **Offline caching**: Store previously viewed summaries
+- **Multiple languages**: Summaries in different languages
+- **Summary length options**: Choose between brief, standard, or detailed summaries
+- **Audio narration**: Listen to summaries instead of reading
+- **Comparison mode**: Compare summaries of similar books
+
+## Privacy and data
+
+<Info>
+  When you request a summary, book metadata is sent to OpenAI's servers. No personal information is included, and OpenAI's privacy policy applies to the summary generation process.
+</Info>
+
+Data handling:
+- Book titles and metadata only
+- No user identification
+- No reading history shared
+- Summaries may be cached locally
+
+## Troubleshooting
+
+<Warning>
+  If summaries aren't loading, check your internet connection. The feature requires active connectivity to generate summaries.
+</Warning>
+
+Common issues:
+
+| Issue | Solution |
+|-------|----------|
+| "Read Summary" button not visible | Feature may be disabled remotely or item type not supported |
+| Summary fails to load | Check internet connection, try again later |
+| Incomplete summary | API may have timed out, try refreshing |
+| Summary in wrong language | Currently summaries are generated in English |
+
+## Related features
+
+- **Item Details**: View full book information and description
+- **Files Browser**: Download books for offline reading
+- **Search**: Find books by topic, author, or genre

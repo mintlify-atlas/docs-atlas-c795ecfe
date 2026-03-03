@@ -1,0 +1,181 @@
+---
+title: Item details
+description: Comprehensive information and actions for books and audiobooks
+---
+
+# Item details
+
+Item detail pages are the heart of the Kafka experience, providing comprehensive information about books and audiobooks along with all available actions.
+
+## Overview
+
+When you tap on any item from the homepage, search results, or library, you'll see its detailed information page with:
+
+- **Cover image** with dynamic color theming (Material You)
+- **Title and creator** information
+- **Full description** (expandable)
+- **Rating** and popularity metrics
+- **Subject tags** for browsing related content
+- **Media type** indicators (audio/text)
+- **Language** information
+- **Available file formats**
+
+## Primary actions
+
+Each item detail page provides quick access to key actions:
+
+<CardGroup cols={2}>
+  <Card title="Play or Read" icon="play">
+    Primary action button to start consuming the content
+  </Card>
+  <Card title="Add to Favorites" icon="heart">
+    Save items to your personal library for quick access
+  </Card>
+  <Card title="View Files" icon="folder">
+    Browse all available file formats and download options
+  </Card>
+  <Card title="Share" icon="share-nodes">
+    Share the item link with others or open on archive.org
+  </Card>
+</CardGroup>
+
+## Content information
+
+### Title and creator
+
+The title is prominently displayed at the top, with the creator name clickable to view all works by that author or artist.
+
+<Note>
+  Tapping on a creator name takes you to a search filtered by that creator, showing all their available works.
+</Note>
+
+### Description
+
+Item descriptions are shown with an expandable view:
+- **Collapsed view**: First few lines with "more" button
+- **Expanded view**: Full description with rich text formatting
+
+### Subject tags
+
+Subject tags appear as clickable chips below the description. Tap any subject to browse similar content in that genre or category.
+
+## Actions and interactions
+
+### Primary action button
+
+The main action button changes based on the content type:
+
+- **Audio items**: Shows "Play" to start playback
+- **Text items**: Shows "Read" to open the reader
+- **Multi-format items**: Shows the most appropriate action
+
+### Favorite toggle
+
+The heart icon lets you add or remove items from your favorites:
+
+- **Empty heart**: Item is not favorited
+- **Filled heart**: Item is in your favorites
+- Tap to toggle favorite status
+- Syncs across devices when signed in
+
+<Tip>
+  Items added to favorites are accessible from the Library tab, even offline.
+</Tip>
+
+### View files
+
+The files action opens a browser showing all available file formats:
+
+- See file names, sizes, and formats
+- Filter by extension (PDF, EPUB, MP3, etc.)
+- Download specific files for offline access
+- View download progress and status
+
+### Share item
+
+**Quick share**:
+- Tap the share icon to share the item link
+- Opens your device's share sheet
+- Share via messaging, email, social media, etc.
+
+**Open on archive.org**:
+- Long-press the share icon
+- Opens the item page on archive.org in a web browser
+- View additional metadata and community information
+
+## AI-powered summaries
+
+For text items, Kafka can generate AI-powered summaries:
+
+1. Tap "Read Summary" button (when available)
+2. View a concise summary of the book's content
+3. Navigate back to the detail page or continue to read
+
+<Note>
+  AI summaries are powered by OpenAI and may not be available for all items. This feature can be enabled or disabled via remote configuration.
+</Note>
+
+## Related content
+
+At the bottom of each item detail page, you'll find:
+
+### More by this creator
+
+A horizontal carousel showing other works by the same author or artist:
+- Swipe to browse additional items
+- Tap any item to view its details
+- Shows cover images and titles
+
+### Recommendations
+
+Personalized recommendations based on:
+- Content similarity
+- User behavior patterns
+- Popular items in similar genres
+
+## Special features
+
+### Dynamic color theme
+
+When enabled (via remote config), item detail pages feature dynamic theming:
+- Colors extracted from the cover image
+- Applied to buttons, backgrounds, and accents
+- Creates a unique visual experience for each item
+- Material You integration for cohesive design
+
+### Restricted content notices
+
+For borrowable books or items with access restrictions:
+- Warning messages explain availability
+- Links to archive.org for borrowing
+- Information about wait times or availability
+
+### Deep linking
+
+Item detail pages support deep linking:
+- Share direct links: `kafkaarchives.com/item/{itemId}`
+- Links open directly in the app when installed
+- Web fallback to kafkaarchives.com
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Finding related content">
+    Use subject tags and creator links to discover similar items. The "More by this creator" section is perfect for exploring an author's complete works.
+  </Accordion>
+  
+  <Accordion title="Managing your library">
+    Add items to favorites before downloading to keep track of what you want to read or listen to. This way, you can batch download items later when on WiFi.
+  </Accordion>
+  
+  <Accordion title="Exploring file formats">
+    Before downloading, check the files view to select the best format for your needs. For audiobooks, choose the highest quality MP3. For books, EPUB offers better formatting than PDF on mobile devices.
+  </Accordion>
+</AccordionGroup>
+
+## Navigation
+
+- **Back**: Use the back button to return to previous screen
+- **Scroll**: Swipe up/down to view all information
+- **Actions**: Action buttons remain accessible while scrolling
+- **Wide screen**: Optimized layout for tablets and large displays

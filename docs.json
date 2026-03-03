@@ -34,13 +34,16 @@
           {
             "group": "Features",
             "pages": [
+              "features/item-details",
               "features/audio-player",
               "features/pdf-reader",
               "features/epub-reader",
               "features/library-management",
               "features/search-and-filters",
               "features/downloads",
-              "features/user-authentication"
+              "features/user-authentication",
+              "features/profile-settings",
+              "features/ai-summaries"
             ]
           },
           {
