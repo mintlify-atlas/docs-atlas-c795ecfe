@@ -1,0 +1,502 @@
+---
+title: Contributing Guidelines
+description: How to contribute to the Kafka project
+---
+
+Thank you for your interest in contributing to Kafka! This guide will help you get started with contributing to the project.
+
+## Getting Started
+
+Before you begin:
+
+1. **Set up your development environment** - Follow the [setup guide](/development/setup)
+2. **Understand the architecture** - Review the [architecture overview](/architecture/overview)
+3. **Build the project** - Ensure you can [build successfully](/development/building)
+4. **Run the tests** - Familiarize yourself with the [testing approach](/development/testing)
+
+## Ways to Contribute
+
+There are many ways to contribute to Kafka:
+
+<CardGroup cols={2}>
+  <Card title="Report Bugs" icon="bug">
+    Found a bug? Report it on GitHub Issues with details and reproduction steps
+  </Card>
+  <Card title="Suggest Features" icon="lightbulb">
+    Have an idea? Open a feature request to discuss it with the community
+  </Card>
+  <Card title="Improve Documentation" icon="book">
+    Help others by improving or adding documentation
+  </Card>
+  <Card title="Write Code" icon="code">
+    Fix bugs, add features, or improve existing functionality
+  </Card>
+  <Card title="Write Tests" icon="flask">
+    Increase test coverage for better code quality
+  </Card>
+  <Card title="Review PRs" icon="eye">
+    Help review pull requests from other contributors
+  </Card>
+</CardGroup>
+
+## Code Contribution Process
+
+<Steps>
+  <Step title="Find or Create an Issue">
+    Before writing code:
+    - Check if an issue exists for what you want to work on
+    - If not, create a new issue describing the bug or feature
+    - Comment on the issue to let others know you're working on it
+    - Wait for feedback from maintainers if it's a significant change
+  </Step>
+
+  <Step title="Fork and Clone">
+    1. Fork the Kafka repository on GitHub
+    2. Clone your fork locally:
+    
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/Kafka.git
+    cd Kafka
+    ```
+    
+    3. Add the upstream repository:
+    
+    ```bash
+    git remote add upstream https://github.com/vipulyaara/Kafka.git
+    ```
+    
+    4. Clone Sarahang dependency:
+    
+    ```bash
+    cd ..
+    git clone https://github.com/vipulyaara/Sarahang.git
+    ```
+  </Step>
+
+  <Step title="Create a Branch">
+    Create a new branch for your work:
+    
+    ```bash
+    git checkout -b feature/your-feature-name
+    # or
+    git checkout -b fix/issue-description
+    ```
+    
+    Use descriptive branch names:
+    - `feature/add-bookmark-sync`
+    - `fix/audio-playback-crash`
+    - `docs/update-setup-guide`
+    - `test/add-search-tests`
+  </Step>
+
+  <Step title="Make Your Changes">
+    Write your code following the project conventions:
+    
+    - Follow the existing code style
+    - Use meaningful variable and function names
+    - Add comments for complex logic
+    - Keep commits focused and atomic
+    - Write/update tests for your changes
+  </Step>
+
+  <Step title="Test Your Changes">
+    Before committing, ensure:
+    
+    ```bash
+    # Format code
+    ./gradlew spotlessApply
+    
+    # Run lint
+    ./gradlew lintDebug
+    
+    # Run tests
+    ./gradlew test
+    
+    # Build the app
+    ./gradlew assembleDebug
+    
+    # Test on a device/emulator
+    ./gradlew installDebug
+    ```
+  </Step>
+
+  <Step title="Commit Your Changes">
+    Write clear, descriptive commit messages:
+    
+    ```bash
+    git add .
+    git commit -m "Add bookmark sync feature
+    
+    - Implement bookmark synchronization with Archive.org
+    - Add sync settings to user preferences
+    - Update UI to show sync status
+    
+    Fixes #123"
+    ```
+    
+    <Note>
+    Reference the issue number in your commit message using `Fixes #123` or `Closes #123`.
+    </Note>
+  </Step>
+
+  <Step title="Push and Create Pull Request">
+    1. Push your branch to your fork:
+    
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+    
+    2. Go to GitHub and create a Pull Request
+    3. Fill out the PR template with:
+       - Description of changes
+       - Issue number (Fixes #123)
+       - Screenshots/videos (for UI changes)
+       - Testing done
+  </Step>
+
+  <Step title="Address Review Feedback">
+    - Be responsive to review comments
+    - Make requested changes promptly
+    - Push additional commits to your branch
+    - Re-request review when ready
+    
+    ```bash
+    # Make changes based on feedback
+    git add .
+    git commit -m "Address review feedback"
+    git push origin feature/your-feature-name
+    ```
+  </Step>
+</Steps>
+
+## Coding Standards
+
+### Kotlin Style Guide
+
+Kafka follows the [official Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html).
+
+<AccordionGroup>
+  <Accordion title="Naming Conventions">
+    ```kotlin
+    // Classes and objects: PascalCase
+    class BookRepository
+    object NetworkModule
+    
+    // Functions and properties: camelCase
+    fun fetchBooks(): List<Book>
+    val currentUser: User
+    
+    // Constants: UPPER_SNAKE_CASE
+    const val MAX_RETRY_ATTEMPTS = 3
+    
+    // Compose functions: PascalCase
+    @Composable
+    fun BookListScreen()
+    ```
+  </Accordion>
+
+  <Accordion title="File Organization">
+    ```kotlin
+    // 1. Package declaration
+    package com.kafka.ui.books
+    
+    // 2. Imports (organized alphabetically)
+    import androidx.compose.runtime.*
+    import com.kafka.data.model.Book
+    
+    // 3. Top-level declarations
+    private const val TAG = "BookScreen"
+    
+    // 4. Class/object declarations
+    class BookViewModel(...) { ... }
+    ```
+  </Accordion>
+
+  <Accordion title="Composable Functions">
+    ```kotlin
+    @Composable
+    fun BookCard(
+        book: Book,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,  // Modifier always last with default
+    ) {
+        Card(
+            modifier = modifier.clickable(onClick = onClick)
+        ) {
+            // Composable content
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Coroutines and Flow">
+    ```kotlin
+    class BookRepository {
+        // Use Flow for streams
+        fun observeBooks(): Flow<List<Book>> = flow {
+            // Implementation
+        }
+        
+        // Use suspend for single operations
+        suspend fun fetchBook(id: String): Result<Book> {
+            // Implementation
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Code Formatting
+
+Kafka uses **Spotless** with **ktlint** for automatic code formatting:
+
+```bash
+# Apply formatting before committing
+./gradlew spotlessApply
+
+# Check if code is properly formatted
+./gradlew spotlessCheck
+```
+
+Formatting rules:
+- 4 spaces for indentation (no tabs)
+- Trailing whitespace removed
+- Files end with newline
+- Maximum line length: 120 characters (recommended)
+
+### Architecture Guidelines
+
+Kafka follows **MVVM architecture** with **clean architecture principles**:
+
+```
+ui/ (Presentation Layer)
+├── screens/
+│   ├── BookScreen.kt          # Composable UI
+│   └── BookViewModel.kt       # UI state and logic
+│
+domain/ (Domain Layer)
+├── usecases/
+│   └── GetBookUseCase.kt      # Business logic
+│
+data/ (Data Layer)
+├── repository/
+│   └── BookRepository.kt      # Data operations
+├── database/
+│   └── BookDao.kt            # Local storage
+└── models/
+    └── Book.kt               # Data models
+```
+
+<Note>
+Refer to the [Architecture Overview](/architecture/overview) for detailed information about the project structure.
+</Note>
+
+## Dependency Injection
+
+Kafka uses **kotlin-inject** for dependency injection:
+
+```kotlin
+@Inject
+class BookRepository(
+    private val bookDao: BookDao,
+    private val api: BookApi,
+) {
+    // Implementation
+}
+
+@Component
+abstract class AppComponent {
+    abstract val bookRepository: BookRepository
+}
+```
+
+## Pull Request Guidelines
+
+### PR Description Template
+
+```markdown
+## Description
+Brief description of what this PR does.
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Related Issue
+Fixes #(issue number)
+
+## Changes Made
+- Change 1
+- Change 2
+- Change 3
+
+## Screenshots/Videos
+(If applicable, add screenshots or videos)
+
+## Testing
+- [ ] Unit tests added/updated
+- [ ] UI tests added/updated
+- [ ] Manual testing performed
+- [ ] Tested on physical device
+- [ ] Tested on emulator
+
+## Checklist
+- [ ] Code follows project style guidelines
+- [ ] Self-reviewed the code
+- [ ] Commented complex code sections
+- [ ] Updated documentation
+- [ ] No new warnings introduced
+- [ ] All tests pass
+- [ ] Spotless formatting applied
+```
+
+### PR Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep PRs Focused">
+    - One PR should address one issue or feature
+    - Avoid mixing unrelated changes
+    - Split large changes into multiple PRs
+  </Accordion>
+
+  <Accordion title="Write Clear Descriptions">
+    - Explain what and why, not just how
+    - Reference related issues
+    - Include screenshots for UI changes
+    - Describe testing performed
+  </Accordion>
+
+  <Accordion title="Keep It Small">
+    - Aim for < 400 lines changed when possible
+    - Easier to review and less likely to have bugs
+    - Faster to merge
+  </Accordion>
+
+  <Accordion title="Update Documentation">
+    - Update README if needed
+    - Add/update code comments
+    - Update API documentation
+  </Accordion>
+</AccordionGroup>
+
+## Reporting Issues
+
+### Bug Reports
+
+When reporting bugs, include:
+
+```markdown
+## Bug Description
+Clear description of the bug
+
+## Steps to Reproduce
+1. Go to '...'
+2. Click on '...'
+3. Scroll down to '...'
+4. See error
+
+## Expected Behavior
+What should happen
+
+## Actual Behavior
+What actually happens
+
+## Environment
+- Kafka Version: 0.48.0
+- Android Version: 14
+- Device: Pixel 6
+- Build Type: Debug/Release
+
+## Logs/Screenshots
+(If applicable)
+```
+
+### Feature Requests
+
+When requesting features, include:
+
+```markdown
+## Feature Description
+Clear description of the feature
+
+## Use Case
+Why is this feature needed?
+
+## Proposed Solution
+How should it work?
+
+## Alternatives Considered
+Other approaches you've thought about
+
+## Additional Context
+Screenshots, mockups, examples from other apps
+```
+
+## Code Review Process
+
+### For Contributors
+
+- Be patient - maintainers review PRs in their spare time
+- Respond to feedback constructively
+- Don't take criticism personally
+- Ask questions if feedback is unclear
+
+### For Reviewers
+
+- Be respectful and constructive
+- Explain the reasoning behind suggestions
+- Approve PRs that improve the codebase
+- Request changes for issues that need fixing
+
+## Community Guidelines
+
+- **Be respectful** - Treat everyone with respect and kindness
+- **Be collaborative** - Work together to improve the project
+- **Be patient** - Understand that contributors have different skill levels
+- **Be constructive** - Provide helpful feedback and suggestions
+- **Give credit** - Acknowledge the work of others
+
+## Recognition
+
+All contributors will be:
+- Listed in the GitHub contributors page
+- Mentioned in release notes (for significant contributions)
+- Part of the Kafka community
+
+## Getting Help
+
+If you need help:
+
+1. **Check the documentation** - Most questions are answered here
+2. **Search existing issues** - Your question might already be answered
+3. **Ask in discussions** - Use GitHub Discussions for questions
+4. **Create an issue** - If you found a bug or have a specific question
+
+## License
+
+By contributing to Kafka, you agree that your contributions will be licensed under the same license as the project.
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/vipulyaara/Kafka">
+    View the source code
+  </Card>
+  <Card title="Issue Tracker" icon="bug" href="https://github.com/vipulyaara/Kafka/issues">
+    Report bugs and request features
+  </Card>
+  <Card title="Architecture Guide" icon="sitemap" href="/architecture/overview">
+    Understand the codebase structure
+  </Card>
+  <Card title="Kotlin Docs" icon="book" href="https://kotlinlang.org/docs/home.html">
+    Learn Kotlin programming
+  </Card>
+</CardGroup>
+
+## Thank You!
+
+Your contributions make Kafka better for everyone. Whether it's code, documentation, bug reports, or feature suggestions - every contribution matters.
+
+Happy coding! 🚀

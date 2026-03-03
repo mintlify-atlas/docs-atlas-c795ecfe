@@ -1,0 +1,799 @@
+---
+title: 'UI Layer with Jetpack Compose'
+description: 'Composable screens, state management, and UI architecture in Kafka'
+---
+
+Kafka's UI is built entirely with **Jetpack Compose** using Material3 design and MaterialYou dynamic colors. The UI layer follows modern Android best practices with declarative UI, unidirectional data flow, and reactive state management.
+
+## UI Layer Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Composable UI                             │
+│   @Composable functions render UI based on state            │
+└────────────────────────┬────────────────────────────────────┘
+                         │ collectAsStateWithLifecycle()
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    ViewModel                                 │
+│   StateFlow<ViewState> - Immutable UI state                 │
+│   User action handlers (public functions)                   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ invoke()
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Interactors & Observers                         │
+│   Business logic and data access                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Composable Screens
+
+### Screen Structure Pattern
+
+All feature screens follow a consistent pattern:
+
+<CodeGroup>
+```kotlin Homepage.kt
+@Composable
+@Inject  // kotlin-inject for factory
+fun Homepage(viewModelFactory: () -> HomepageViewModel) {
+    // 1. Get ViewModel
+    val viewModel = viewModel { viewModelFactory() }
+    
+    // 2. Collect state
+    val viewState by viewModel.state.collectAsStateWithLifecycle()
+    
+    // 3. Scaffold with top bar
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = { HomeTopBar(openProfile = viewModel::openProfile) }
+    ) { padding ->
+        ProvideScaffoldPadding(padding = padding) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 4. Content based on state
+                AnimatedVisibilityFade(visible = viewState.homepage.collection.isNotEmpty()) {
+                    HomepageFeedItems(
+                        homepage = viewState.homepage,
+                        openItemDetail = viewModel::openItemDetail,
+                        removeRecentItem = viewModel::removeRecentItem,
+                        goToSearch = viewModel::openSearch
+                    )
+                }
+
+                // 5. Loading state
+                InfiniteProgressBar(
+                    show = viewState.isFullScreenLoading,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+
+                // 6. Error state
+                FullScreenMessage(
+                    uiMessage = viewState.message,
+                    show = viewState.isFullScreenError,
+                    onRetry = viewModel::retry,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+    }
+}
+```
+
+```kotlin SearchScreen.kt  
+@Composable
+fun SearchScreen(viewModelFactory: () -> SearchViewModel) {
+    val viewModel = viewModel { viewModelFactory() }
+    val viewState by viewModel.state.collectAsStateWithLifecycle()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Search bar
+        SearchTopBar(
+            query = viewState.query,
+            onQueryChange = viewModel::updateQuery,
+            onSearch = viewModel::search
+        )
+
+        // Filters
+        SearchFilters(
+            selectedFilter = viewState.selectedFilter,
+            onFilterChange = viewModel::updateFilter
+        )
+
+        // Results
+        when {
+            viewState.isLoading -> LoadingState()
+            viewState.items.isNotEmpty() -> SearchResults(
+                items = viewState.items,
+                onItemClick = viewModel::openItemDetail
+            )
+            else -> EmptyState()
+        }
+    }
+}
+```
+
+```kotlin ItemDetailScreen.kt
+@Composable
+fun ItemDetailScreen(
+    itemId: String,
+    viewModelFactory: (String) -> ItemDetailViewModel
+) {
+    val viewModel = viewModel { viewModelFactory(itemId) }
+    val viewState by viewModel.state.collectAsStateWithLifecycle()
+
+    Scaffold(
+        topBar = {
+            DetailTopBar(
+                title = viewState.item?.title,
+                onBackClick = viewModel::navigateBack
+            )
+        },
+        floatingActionButton = {
+            PlayButton(
+                onClick = viewModel::playAudio,
+                visible = viewState.item?.isAudio == true
+            )
+        }
+    ) { padding ->
+        ItemDetailContent(
+            item = viewState.item,
+            files = viewState.files,
+            isFavorite = viewState.isFavorite,
+            onFavoriteClick = viewModel::toggleFavorite,
+            onFileClick = viewModel::openFile,
+            modifier = Modifier.padding(padding)
+        )
+    }
+}
+```
+</CodeGroup>
+
+### Key UI Patterns
+
+<CardGroup cols={2}>
+  <Card title="Factory Injection" icon="industry">
+    Use `@Inject` on composable with ViewModel factory parameter
+  </Card>
+  
+  <Card title="State Collection" icon="download">
+    `collectAsStateWithLifecycle()` for lifecycle-aware collection
+  </Card>
+  
+  <Card title="Scaffold Pattern" icon="table-columns">
+    Consistent use of Scaffold with top bar and FAB
+  </Card>
+  
+  <Card title="State-Based UI" icon="sitemap">
+    Render different UI based on ViewState properties
+  </Card>
+</CardGroup>
+
+## State Management
+
+### ViewState Pattern
+
+Immutable data classes representing complete UI state:
+
+<CodeGroup>
+```kotlin HomepageViewState
+data class HomepageViewState(
+    val homepage: Homepage = Homepage(),
+    val user: User? = null,
+    val isLoading: Boolean = false,
+    val appShareIndex: Int = 6,
+    val message: UiMessage? = null,
+) {
+    // Derived/computed properties
+    val isFullScreenLoading = isLoading && homepage.collection.isEmpty()
+    val isFullScreenError = message != null && homepage.collection.isEmpty()
+    val hasData = homepage.collection.isNotEmpty()
+}
+```
+
+```kotlin SearchViewState
+data class SearchViewState(
+    val query: String = "",
+    val items: List<Item> = emptyList(),
+    val selectedFilter: SearchFilter = SearchFilter.All,
+    val recentSearches: List<String> = emptyList(),
+    val isLoading: Boolean = false,
+    val hasMore: Boolean = false,
+    val error: String? = null
+) {
+    val showRecentSearches = query.isEmpty() && recentSearches.isNotEmpty()
+    val showEmptyState = !isLoading && items.isEmpty() && query.isNotEmpty()
+}
+```
+
+```kotlin ItemDetailViewState
+data class ItemDetailViewState(
+    val item: Item? = null,
+    val files: List<File> = emptyList(),
+    val isFavorite: Boolean = false,
+    val isDownloaded: Boolean = false,
+    val downloadProgress: Float = 0f,
+    val isLoading: Boolean = false
+)
+```
+</CodeGroup>
+
+### Creating StateFlow in ViewModel
+
+<CodeGroup>
+```kotlin Combine Multiple Flows
+val state: StateFlow<ViewState> = combine(
+    observeHomepage.flow,
+    observeUser.flow,
+    loadingCounter.observable,
+    uiMessageManager.message,
+) { homepage, user, isLoading, message ->
+    ViewState(
+        homepage = homepage,
+        user = user,
+        isLoading = isLoading,
+        message = message
+    )
+}.stateInDefault(
+    scope = viewModelScope,
+    initialValue = ViewState()
+)
+```
+
+```kotlin Map Single Flow
+val state: StateFlow<ViewState> = observeRecentItems.flow
+    .map { recentItems ->
+        ViewState(recentItems = recentItems.toPersistentList())
+    }
+    .stateInDefault(
+        scope = viewModelScope,
+        initialValue = ViewState()
+    )
+```
+
+```kotlin With MutableState for User Input
+private val _query = MutableStateFlow("")
+
+val state: StateFlow<ViewState> = combine(
+    _query,
+    observeSearchResults.flow,
+    loadingCounter.observable
+) { query, results, isLoading ->
+    ViewState(
+        query = query,
+        items = results,
+        isLoading = isLoading
+    )
+}.stateInDefault(viewModelScope, ViewState())
+
+fun updateQuery(query: String) {
+    _query.value = query
+}
+```
+</CodeGroup>
+
+## Reusable UI Components
+
+Kafka has a rich library of reusable components in the `ui:components` module.
+
+### Item Components
+
+<CodeGroup>
+```kotlin Item Cards
+// Full item card with cover, title, creator
+@Composable
+fun Item(
+    item: Item,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
+) {
+    Row(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing12)
+    ) {
+        CoverImage(
+            data = item.coverImage,
+            modifier = Modifier.size(80.dp)
+        )
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title ?: "",
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2
+            )
+            
+            item.creator?.name?.let { creator ->
+                Text(
+                    text = creator,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+// Row item (smaller, horizontal)
+@Composable
+fun RowItem(
+    item: Item,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.width(140.dp),
+        verticalArrangement = Arrangement.spacedBy(Dimens.Spacing08)
+    ) {
+        CoverImage(
+            data = item.coverImage,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.7f)
+        )
+        
+        Text(
+            text = item.title ?: "",
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2
+        )
+    }
+}
+
+// Small item (for grids)
+@Composable  
+fun ItemSmall(
+    item: Item,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing08)
+    ) {
+        CoverImage(
+            data = item.coverImage,
+            modifier = Modifier.size(48.dp)
+        )
+        
+        Text(
+            text = item.title ?: "",
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+```
+
+```kotlin Featured Carousel
+@Composable
+fun Carousels(
+    carouselItems: List<Item>,
+    images: List<String>,
+    showLabel: Boolean,
+    onBannerClick: (String) -> Unit
+) {
+    val pagerState = rememberPagerState(pageCount = { carouselItems.size })
+
+    Column {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(240.dp)
+        ) { page ->
+            FeaturedItemCard(
+                item = carouselItems[page],
+                imageUrl = images.getOrNull(page),
+                showLabel = showLabel,
+                onClick = { onBannerClick(carouselItems[page].itemId) }
+            )
+        }
+        
+        HorizontalPagerIndicator(
+            pagerState = pagerState,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(Dimens.Spacing16)
+        )
+    }
+}
+```
+
+```kotlin Loading Placeholders
+@Composable
+fun ItemPlaceholder(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing12)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .placeholder(
+                    visible = true,
+                    highlight = PlaceholderHighlight.shimmer()
+                )
+        )
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .placeholder(visible = true)
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .height(16.dp)
+                    .placeholder(visible = true)
+            )
+        }
+    }
+}
+```
+</CodeGroup>
+
+### Common UI Components
+
+<CodeGroup>
+```kotlin Message Box
+@Composable
+fun MessageBox(
+    text: String,
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(Dimens.Spacing16),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing12),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            leadingIcon?.let {
+                Icon(imageVector = it, contentDescription = null)
+            }
+            
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            
+            trailingIcon?.let {
+                Icon(imageVector = it, contentDescription = null)
+            }
+        }
+    }
+}
+```
+
+```kotlin Full Screen Message
+@Composable
+fun FullScreenMessage(
+    uiMessage: UiMessage?,
+    show: Boolean,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = show,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(Dimens.Gutter),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Dimens.Spacing16)
+        ) {
+            Icon(
+                imageVector = Icons.Error,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.error
+            )
+            
+            Text(
+                text = uiMessage?.message ?: "Something went wrong",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center
+            )
+            
+            Button(onClick = onRetry) {
+                Text("Retry")
+            }
+        }
+    }
+}
+```
+
+```kotlin Infinite Progress Bar
+@Composable
+fun InfiniteProgressBar(
+    show: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = show,
+        modifier = modifier,
+        enter = fadeIn(),
+        exit = fadeOut()
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(48.dp)
+        )
+    }
+}
+```
+</CodeGroup>
+
+## Material3 & MaterialYou
+
+Kafka uses Material3 with dynamic colors (MaterialYou).
+
+<CodeGroup>
+```kotlin Theme Setup
+@Composable
+fun KafkaTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context)
+            else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        shapes = Shapes,
+        content = content
+    )
+}
+```
+
+```kotlin Typography
+val Typography = Typography(
+    displayLarge = TextStyle(
+        fontWeight = FontWeight.Normal,
+        fontSize = 57.sp,
+        lineHeight = 64.sp
+    ),
+    titleLarge = TextStyle(
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp
+    ),
+    bodyLarge = TextStyle(
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp
+    ),
+    // ... more text styles
+)
+```
+
+```kotlin Shapes
+val Shapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(24.dp)
+)
+```
+</CodeGroup>
+
+## Navigation
+
+Type-safe navigation using Compose Navigation.
+
+<CodeGroup>
+```kotlin Screen Definitions
+sealed class Screen(val route: String) {
+    object Homepage : Screen("homepage")
+    object Search : Screen("search?query={query}&filter={filter}") {
+        fun createRoute(query: String = "", filter: String = "") =
+            "search?query=$query&filter=$filter"
+    }
+    data class ItemDetail(val itemId: String) : Screen("item/$itemId")
+    object Profile : Screen("profile")
+    object Library : Screen("library")
+}
+```
+
+```kotlin Navigator
+@ApplicationScope
+class Navigator @Inject constructor() {
+    private val _navigationFlow = MutableSharedFlow<NavigationEvent>()
+    val navigationFlow = _navigationFlow.asSharedFlow()
+
+    fun navigate(screen: Screen, root: RootScreen? = null) {
+        viewModelScope.launch {
+            _navigationFlow.emit(NavigationEvent.Navigate(screen, root))
+        }
+    }
+
+    fun navigateBack() {
+        viewModelScope.launch {
+            _navigationFlow.emit(NavigationEvent.Back)
+        }
+    }
+}
+```
+
+```kotlin NavHost Setup
+@Composable
+fun KafkaNavHost(
+    navController: NavHostController,
+    navigator: Navigator
+) {
+    LaunchedEffect(navigator) {
+        navigator.navigationFlow.collect { event ->
+            when (event) {
+                is NavigationEvent.Navigate -> 
+                    navController.navigate(event.screen.route)
+                NavigationEvent.Back -> 
+                    navController.popBackStack()
+            }
+        }
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = Screen.Homepage.route
+    ) {
+        composable(Screen.Homepage.route) {
+            Homepage(viewModelFactory = { /* inject */ })
+        }
+        
+        composable(Screen.ItemDetail.route) { backStackEntry ->
+            val itemId = backStackEntry.arguments?.getString("itemId") ?: return@composable
+            ItemDetailScreen(itemId, viewModelFactory = { /* inject */ })
+        }
+        
+        // ... more destinations
+    }
+}
+```
+</CodeGroup>
+
+## Lists and LazyLayouts
+
+Efficient list rendering with LazyColumn and LazyRow.
+
+<CodeGroup>
+```kotlin LazyColumn with Mixed Content
+@Composable
+fun HomepageFeedItems(
+    homepage: Homepage,
+    openItemDetail: (String, String) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.testTag("homepage_feed_items"),
+        contentPadding = scaffoldPadding()
+    ) {
+        homepage.collection.forEachIndexed { index, collection ->
+            when (collection) {
+                is HomepageCollection.RecentItems -> {
+                    item(key = "recent", contentType = "recent") {
+                        RecentItems(
+                            readingList = homepage.continueReadingItems,
+                            openItemDetail = openItemDetail
+                        )
+                    }
+                }
+                
+                is HomepageCollection.Row -> {
+                    item(key = collection.key, contentType = "row") {
+                        RowItems(
+                            items = collection.items,
+                            openItemDetail = { openItemDetail(it, "row") }
+                        )
+                    }
+                }
+                
+                is HomepageCollection.Column -> {
+                    columnItems(collection) { openItemDetail(it, "column") }
+                }
+            }
+        }
+    }
+}
+```
+
+```kotlin LazyRow
+@Composable
+fun RowItems(
+    items: List<Item>,
+    openItemDetail: (String) -> Unit
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = Dimens.Gutter),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing12)
+    ) {
+        items(
+            items = items,
+            key = { it.itemId },
+            contentType = { "item" }
+        ) { item ->
+            RowItem(
+                item = item,
+                modifier = Modifier.clickable { openItemDetail(item.itemId) }
+            )
+        }
+    }
+}
+```
+
+```kotlin LazyVerticalGrid
+@Composable
+fun GridItems(
+    items: List<Item>,
+    openItemDetail: (String) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 150.dp),
+        contentPadding = PaddingValues(Dimens.Gutter),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing12),
+        verticalArrangement = Arrangement.spacedBy(Dimens.Spacing12)
+    ) {
+        items(
+            items = items,
+            key = { it.itemId }
+        ) { item ->
+            GridItemCard(
+                item = item,
+                onClick = { openItemDetail(item.itemId) }
+            )
+        }
+    }
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Lifecycle Awareness" icon="heart-pulse">
+    Use `collectAsStateWithLifecycle()` instead of `collectAsState()`
+  </Card>
+  
+  <Card title="Immutable State" icon="lock">
+    ViewState should be immutable data classes
+  </Card>
+  
+  <Card title="Stateless Composables" icon="feather">
+    Keep composables stateless, hoist state to ViewModel
+  </Card>
+  
+  <Card title="Keys in Lists" icon="key">
+    Always provide keys for items() in lazy layouts
+  </Card>
+  
+  <Card title="Reusable Components" icon="puzzle-piece">
+    Extract common UI patterns to ui:components
+  </Card>
+  
+  <Card title="Loading States" icon="spinner">
+    Show placeholders instead of empty screens
+  </Card>
+</CardGroup>

@@ -1,0 +1,504 @@
+---
+title: Testing
+description: Testing approach and guidelines for Kafka
+---
+
+This guide covers the testing strategy and practices used in the Kafka project.
+
+## Testing Philosophy
+
+Kafka follows modern Android testing best practices:
+
+- **Unit tests** for business logic and use cases
+- **UI tests** using Compose testing framework
+- **Integration tests** for data layer
+- **Baseline profile tests** for performance optimization
+
+<Note>
+While the project structure supports comprehensive testing, the current focus is on functionality. Contributions to improve test coverage are highly welcomed!
+</Note>
+
+## Test Infrastructure
+
+### Test Dependencies
+
+Key testing libraries configured in `gradle/libs.versions.toml`:
+
+```toml
+[versions]
+junit = "4.13.2"
+androidx-test-ext-junit = "1.3.0"
+espresso-core = "3.7.0"
+uiautomator = "2.3.0"
+benchmark-macro-junit4 = "1.4.1"
+```
+
+### Test Tags
+
+The project uses semantic test tags for UI testing, defined in `ui/common/src/main/java/com/kafka/common/test/TestTags.kt`:
+
+```kotlin
+object TestTags {
+    // Add your test tags here
+    const val COMPONENT_TAG = "component_tag"
+}
+```
+
+Use these tags to identify UI elements in tests:
+
+```kotlin
+Composable(
+    modifier = Modifier.testTag(TestTags.COMPONENT_TAG)
+)
+```
+
+## Unit Testing
+
+### Setting Up Unit Tests
+
+Create unit test files in the module's `src/test/` directory:
+
+```
+module/
+├── src/
+│   ├── main/
+│   │   └── java/
+│   └── test/
+│       └── java/
+│           └── com/kafka/module/
+│               └── MyUnitTest.kt
+```
+
+### Example Unit Test
+
+```kotlin
+import org.junit.Test
+import org.junit.Assert.*
+
+class ExampleUnitTest {
+    @Test
+    fun addition_isCorrect() {
+        assertEquals(4, 2 + 2)
+    }
+}
+```
+
+### Running Unit Tests
+
+<CodeGroup>
+```bash All Unit Tests
+# Run all unit tests in the project
+./gradlew test
+
+# Run tests for a specific module
+./gradlew :app:test
+
+# Run tests with coverage
+./gradlew test jacocoTestReport
+```
+
+```bash Specific Tests
+# Run a specific test class
+./gradlew test --tests com.kafka.ExampleUnitTest
+
+# Run tests matching a pattern
+./gradlew test --tests '*Unit*'
+```
+
+```bash Android Studio
+# Right-click on:
+# - Test file → Run 'TestFileName'
+# - Test class → Run 'ClassName'
+# - Test method → Run 'methodName'
+```
+</CodeGroup>
+
+## UI Testing
+
+### Compose Testing
+
+Kafka uses Jetpack Compose, which provides powerful testing utilities:
+
+```kotlin
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createComposeRule
+import org.junit.Rule
+import org.junit.Test
+
+class MyComposeTest {
+    @get:Rule
+    val composeTestRule = createComposeRule()
+
+    @Test
+    fun myTest() {
+        composeTestRule.setContent {
+            MyComposable()
+        }
+
+        composeTestRule
+            .onNodeWithText("Hello")
+            .assertIsDisplayed()
+    }
+}
+```
+
+### Using Test Tags
+
+```kotlin
+// In your Composable
+@Composable
+fun SearchButton() {
+    Button(
+        modifier = Modifier.testTag(TestTags.SEARCH_BUTTON),
+        onClick = { /* ... */ }
+    ) {
+        Text("Search")
+    }
+}
+
+// In your test
+@Test
+fun searchButton_isDisplayed() {
+    composeTestRule
+        .onNodeWithTag(TestTags.SEARCH_BUTTON)
+        .assertIsDisplayed()
+        .performClick()
+}
+```
+
+### Running UI Tests
+
+<CodeGroup>
+```bash Instrumented Tests
+# Run all instrumented tests
+./gradlew connectedAndroidTest
+
+# Run on a specific device
+./gradlew connectedDebugAndroidTest
+
+# Run tests for a specific module
+./gradlew :app:connectedAndroidTest
+```
+
+```bash Emulator
+# Start emulator first
+emulator -avd Pixel_6_API_31
+
+# Then run tests
+./gradlew connectedAndroidTest
+```
+</CodeGroup>
+
+## Baseline Profile Testing
+
+Kafka uses Macrobenchmark for baseline profile generation and performance testing.
+
+### Configuration
+
+Baseline profile testing is configured in the `baselineprofile` module:
+
+```kotlin
+// baselineprofile/build.gradle.kts
+android {
+    testOptions.managedDevices.devices {
+        create<ManagedVirtualDevice>("pixel6Api31") {
+            device = "Pixel 6"
+            apiLevel = 31
+            systemImageSource = "aosp"
+        }
+    }
+}
+
+baselineProfile {
+    managedDevices += "pixel6Api31"
+    useConnectedDevices = true
+}
+```
+
+### Generate Baseline Profile
+
+<Steps>
+  <Step title="Prepare Device">
+    Connect a device or start an emulator (API 31+ recommended)
+  </Step>
+
+  <Step title="Run Generation">
+    ```bash
+    # Using connected device
+    ./gradlew :baselineprofile:generateBaselineProfile
+    
+    # Using managed device
+    ./gradlew :baselineprofile:pixel6Api31Setup \
+      :baselineprofile:generateBaselineProfile
+    ```
+  </Step>
+
+  <Step title="Review Output">
+    Generated profiles are placed in:
+    ```
+    app/src/main/baseline-prof.txt
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Baseline profile generation requires a physical device or emulator. It cannot run on rooted devices or in CI environments without special configuration.
+</Warning>
+
+### Macrobenchmark Tests
+
+Create performance benchmarks:
+
+```kotlin
+import androidx.benchmark.macro.junit4.MacrobenchmarkRule
+import androidx.benchmark.macro.StartupMode
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class StartupBenchmark {
+    @get:Rule
+    val benchmarkRule = MacrobenchmarkRule()
+
+    @Test
+    fun startupNoCompilation() = benchmarkRule.measureRepeated(
+        packageName = "com.kafka.user",
+        metrics = listOf(StartupTimingMetric()),
+        iterations = 5,
+        startupMode = StartupMode.COLD
+    ) {
+        pressHome()
+        startActivityAndWait()
+    }
+}
+```
+
+## Test Best Practices
+
+### Writing Good Tests
+
+<AccordionGroup>
+  <Accordion title="Follow AAA Pattern">
+    Structure tests with Arrange, Act, Assert:
+    
+    ```kotlin
+    @Test
+    fun userLogin_withValidCredentials_succeeds() {
+        // Arrange
+        val username = "test@example.com"
+        val password = "password123"
+        
+        // Act
+        val result = loginUseCase(username, password)
+        
+        // Assert
+        assertTrue(result.isSuccess)
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use Descriptive Names">
+    Test names should describe what they test:
+    
+    ```kotlin
+    // Good
+    @Test
+    fun searchResults_whenQueryEmpty_showsRecentSearches()
+    
+    // Bad
+    @Test
+    fun testSearch()
+    ```
+  </Accordion>
+
+  <Accordion title="Test One Thing">
+    Each test should verify a single behavior:
+    
+    ```kotlin
+    // Good - separate tests
+    @Test
+    fun download_whenStarted_showsProgress()
+    
+    @Test
+    fun download_whenComplete_showsSuccess()
+    
+    // Bad - testing multiple behaviors
+    @Test
+    fun downloadWorkflow()
+    ```
+  </Accordion>
+
+  <Accordion title="Mock External Dependencies">
+    Use dependency injection to mock external dependencies:
+    
+    ```kotlin
+    class MyViewModelTest {
+        private val mockRepository = mock<Repository>()
+        private val viewModel = MyViewModel(mockRepository)
+        
+        @Test
+        fun loadData_callsRepository() {
+            viewModel.loadData()
+            verify(mockRepository).fetchData()
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Test Organization
+
+```
+module/
+├── src/
+│   ├── main/
+│   ├── test/              # Unit tests
+│   │   └── java/
+│   │       └── com/kafka/
+│   │           ├── domain/  # Domain layer tests
+│   │           ├── data/    # Data layer tests
+│   │           └── ui/      # ViewModel tests
+│   └── androidTest/       # Instrumented tests
+│       └── java/
+│           └── com/kafka/
+│               └── ui/      # UI tests
+```
+
+## Code Quality Tools
+
+### Spotless (Code Formatting)
+
+Kafka uses Spotless for code formatting:
+
+<CodeGroup>
+```bash Apply Formatting
+# Format all code
+./gradlew spotlessApply
+
+# Format specific module
+./gradlew :app:spotlessApply
+```
+
+```bash Check Formatting
+# Check if code is formatted
+./gradlew spotlessCheck
+
+# This runs in CI and will fail if code is not formatted
+```
+</CodeGroup>
+
+Formatting rules from `spotless/spotless.gradle`:
+
+```gradle
+spotless {
+    kotlin {
+        target "**/*.kt"
+        ktlint()
+        trimTrailingWhitespace()
+        indentWithSpaces()
+        endWithNewline()
+    }
+}
+```
+
+### Lint Checks
+
+<CodeGroup>
+```bash Run Lint
+# Run lint on debug variant
+./gradlew lintDebug
+
+# Run lint on all variants
+./gradlew lint
+
+# Generate HTML report
+./gradlew lintDebug
+# Report: app/build/reports/lint-results-debug.html
+```
+
+```bash Fix Issues
+# Some lint issues can be auto-fixed
+./gradlew lintFix
+```
+</CodeGroup>
+
+Lint configuration in `app/build.gradle.kts`:
+
+```kotlin
+lint {
+    baseline = file("lint-baseline.xml")
+    checkReleaseBuilds = false
+    ignoreTestSources = true
+    abortOnError = true
+    checkDependencies = true
+}
+```
+
+## Continuous Integration
+
+### Pre-commit Checks
+
+Before committing, run:
+
+```bash
+# Format code
+./gradlew spotlessApply
+
+# Run lint
+./gradlew lintDebug
+
+# Run unit tests
+./gradlew test
+
+# Build project
+./gradlew assembleDebug
+```
+
+### CI Pipeline
+
+The GitHub Actions workflow (`.github/workflows/build-release.yml`) runs:
+
+1. Checkout code
+2. Setup JDK 17
+3. Run Spotless check
+4. Run lint
+5. Build release APK
+6. Run tests
+7. Generate baseline profile (on specific triggers)
+
+## Test Coverage
+
+Generate test coverage reports:
+
+```bash
+# Run tests with coverage
+./gradlew test jacocoTestReport
+
+# View report
+open app/build/reports/jacoco/test/html/index.html
+```
+
+<Note>
+The project welcomes contributions to improve test coverage, especially for critical business logic and user flows.
+</Note>
+
+## Contributing Tests
+
+When contributing new features:
+
+1. **Write unit tests** for business logic
+2. **Add UI tests** for new screens or components
+3. **Update test tags** if adding new testable UI elements
+4. **Run all tests** before submitting a PR
+5. **Ensure code formatting** with Spotless
+
+<CardGroup cols={2}>
+  <Card title="Contributing Guide" icon="code-pull-request" href="/development/contributing">
+    Learn how to contribute
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Understand the architecture
+  </Card>
+</CardGroup>

@@ -1,0 +1,223 @@
+---
+title: 'Architecture Overview'
+description: 'High-level overview of Kafka app architecture'
+---
+
+Kafka is built with a modern, scalable architecture that follows Android best practices and implements MVVM pattern with interactors. The architecture is inspired by [Tivi](https://github.com/chrisbanes/tivi) and leverages the latest Android frameworks and Kotlin Multiplatform.
+
+## Architecture Principles
+
+Kafka follows these core architectural principles:
+
+- **Separation of Concerns**: Clear separation between UI, domain, and data layers
+- **Unidirectional Data Flow**: Data flows from repositories through interactors to ViewModels
+- **Reactive Programming**: Heavy use of Kotlin Flows for reactive data streams
+- **Dependency Injection**: kotlin-inject for compile-time safe dependency injection
+- **Modular Design**: Feature-based modularization with shared core modules
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        UI Layer                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   Compose    │  │  ViewModels  │  │  Navigation  │      │
+│  │   Screens    │◄─┤              │  │              │      │
+│  └──────────────┘  └──────┬───────┘  └──────────────┘      │
+└────────────────────────────┼──────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Domain Layer                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ Interactors  │  │  Observers   │  │   Entities   │      │
+│  │  (UseCases)  │  │ (SubjectInt) │  │              │      │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────┘      │
+└─────────┼──────────────────┼──────────────────────────────────┘
+          │                  │
+          ▼                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       Data Layer                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ Repositories │  │  Room DAOs   │  │  Remote API  │      │
+│  │              │  │              │  │   (Ktor)     │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Layer Responsibilities
+
+### UI Layer
+The presentation layer built with Jetpack Compose:
+- **Composable Screens**: Declarative UI components
+- **ViewModels**: State management and user action handling
+- **Navigation**: Screen navigation and deep linking
+- **State**: Immutable state classes using `StateFlow`
+
+### Domain Layer
+Business logic layer that orchestrates data flow:
+- **Interactors**: Execute single use cases (write operations)
+- **Observers**: Provide reactive streams of data (read operations)
+- **Domain Models**: Business entities and models
+- **Mappers**: Transform data between layers
+
+### Data Layer
+Data management and persistence:
+- **Repositories**: Single source of truth for data
+- **DAOs**: Room database access objects
+- **Remote Data Sources**: API clients (Ktor)
+- **Local Storage**: Room database, DataStore preferences
+- **Mappers**: Convert between network/database and domain models
+
+## Technology Stack
+
+<CardGroup cols={2}>
+  <Card title="UI Framework" icon="mobile">
+    - Jetpack Compose
+    - Material3 with MaterialYou
+    - Compose Navigation
+  </Card>
+  
+  <Card title="Architecture" icon="layer-group">
+    - MVVM Pattern
+    - Repository Pattern
+    - Interactors (Use Cases)
+  </Card>
+  
+  <Card title="Async & Reactive" icon="arrows-rotate">
+    - Kotlin Coroutines
+    - Kotlin Flow
+    - StateFlow & SharedFlow
+  </Card>
+  
+  <Card title="Data Persistence" icon="database">
+    - Room Database
+    - DataStore (Preferences)
+    - Firestore (Remote)
+  </Card>
+  
+  <Card title="Networking" icon="network-wired">
+    - Ktor Client
+    - Kotlin Serialization
+    - OkHttp
+  </Card>
+  
+  <Card title="Dependency Injection" icon="syringe">
+    - kotlin-inject
+    - @Component annotations
+    - Compile-time safe
+  </Card>
+  
+  <Card title="Media Playback" icon="play">
+    - ExoPlayer
+    - Sarahang (Audio)
+    - Custom PDF/EPUB readers
+  </Card>
+  
+  <Card title="Platform" icon="android">
+    - Kotlin Multiplatform
+    - Android & Desktop
+    - Shared business logic
+  </Card>
+</CardGroup>
+
+## Key Architectural Patterns
+
+### Reactive Data Flow
+
+Data flows reactively through the application:
+
+1. **Repository** observes database or remote data source
+2. **Observer** (SubjectInteractor) exposes a Flow
+3. **ViewModel** collects the Flow and transforms to UI state
+4. **Composable** collects state and renders UI
+
+<CodeGroup>
+```kotlin Repository
+@ApplicationScope
+class HomepageRepository @Inject constructor(
+    private val firestoreGraph: FirestoreGraph,
+    private val homepageMapper: HomepageMapper
+) {
+    fun observeHomepageCollection() =
+        firestoreGraph.homepageCollection.snapshots
+            .flatMapLatest { it.toHomepage() }
+}
+```
+
+```kotlin Observer (Domain)
+class ObserveHomepage @Inject constructor(
+    private val coroutineDispatchers: CoroutineDispatchers,
+    private val homepageRepository: HomepageRepository,
+) : SubjectInteractor<Unit, Homepage>() {
+
+    override fun createObservable(params: Unit): Flow<Homepage> {
+        return homepageRepository.observeHomepageCollection()
+            .flowOn(coroutineDispatchers.io)
+    }
+}
+```
+
+```kotlin ViewModel
+class HomepageViewModel @Inject constructor(
+    observeHomepage: ObserveHomepage,
+    private val updateHomepage: UpdateHomepage,
+    private val navigator: Navigator
+) : ViewModel() {
+    
+    val state: StateFlow<HomepageViewState> = combine(
+        observeHomepage.flow,
+        loadingCounter.observable,
+        ::HomepageViewState
+    ).stateInDefault(scope = viewModelScope, initialValue = HomepageViewState())
+    
+    init {
+        observeHomepage(Unit)
+        updateItems()
+    }
+    
+    private fun updateItems() {
+        viewModelScope.launch {
+            updateHomepage(Unit).collectStatus(loadingCounter, uiMessageManager)
+        }
+    }
+}
+```
+</CodeGroup>
+
+### Separation of Read and Write Operations
+
+- **Observers (SubjectInteractor)**: Read operations that return `Flow<T>`
+- **Interactors**: Write operations that return `Flow<InvokeStatus>`
+- **ResultInteractors**: Operations that return `Result<T>`
+
+This separation provides clear intent and better type safety.
+
+## Kotlin Multiplatform
+
+Many modules are marked with `// kmp` in `settings.gradle`, indicating they are shared between Android and Desktop:
+
+- `base:domain` - Core domain patterns
+- `data:*` - All data modules
+- `domain` - Business logic
+- `ui:common`, `ui:components`, `ui:theme` - Shared UI components
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Module Structure" icon="folder-tree" href="/architecture/modules">
+    Explore the modular organization of the codebase
+  </Card>
+  
+  <Card title="MVVM Pattern" icon="diagram-project" href="/architecture/mvvm-pattern">
+    Deep dive into ViewModels and Interactors
+  </Card>
+  
+  <Card title="Data Layer" icon="database" href="/architecture/data-layer">
+    Learn about repositories, DAOs, and data management
+  </Card>
+  
+  <Card title="UI Layer" icon="palette" href="/architecture/ui-layer">
+    Discover Jetpack Compose implementation
+  </Card>
+</CardGroup>

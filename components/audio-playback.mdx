@@ -1,0 +1,166 @@
+---
+title: Audio Playback
+description: Audio playback implementation using the Sarahang library for streaming and playing audio files from Archive.org
+---
+
+Kafka uses the [Sarahang](https://github.com/viveksinghggits/Sarahang) library for audio playback, which provides a robust media player built on top of Android's Media3 (ExoPlayer). The audio playback system handles streaming MP3, FLAC, OGG, and other audio formats from Archive.org.
+
+## Architecture Overview
+
+The audio playback implementation consists of several key components:
+
+- **PlaybackConnection**: Manages the connection to the media player service
+- **AudioDataSource**: Provides audio metadata to the player
+- **SarahangPlayer**: The core media player implementation
+- **MediaSessionPlayer**: Handles media session for system integration
+
+## PlaybackConnection Setup
+
+The `KafkaApplication` class implements `PlayerServiceDependencies` to provide all required dependencies for the Sarahang player:
+
+```kotlin app/src/main/java/com/kafka/user/KafkaApplication.kt
+class KafkaApplication : Application(), PlayerServiceDependencies {
+    internal val component: AndroidApplicationComponent by lazy(LazyThreadSafetyMode.NONE) {
+        AndroidApplicationComponent::class.create(this)
+    }
+
+    override val player: SarahangPlayer
+        get() = component.player
+    override val timer: SleepTimer
+        get() = component.timer
+    override val logger: Logger
+        get() = component.logger
+    override val mediaNotifications: MediaNotifications
+        get() = component.mediaNotifications
+    override val audioDataSource: AudioDataSource
+        get() = component.audioDataSource
+    override val playbackConnection: PlaybackConnection
+        get() = component.playbackConnection
+    override val sessionPlayer: MediaSessionPlayer
+        get() = component.sessionPlayer
+}
+```
+
+## Audio Data Source
+
+The `PlayerAudioDataSource` class bridges Kafka's database with the Sarahang player by converting `File` entities to `Audio` objects:
+
+```kotlin ui/shared/src/commonMain/kotlin/com/kafka/shared/playback/PlayerAudioDataSource.kt
+class PlayerAudioDataSource @Inject constructor(
+    private val fileDao: FileDao
+) : AudioDataSource {
+    override suspend fun getByIds(ids: List<String>): List<Audio> {
+        return fileDao.getByIds(ids.take(SQL_QUERY_LIMIT))
+            .sortedBy { it.format }
+            .map { it.asAudio() }
+    }
+
+    override suspend fun findAudio(id: String): Audio? {
+        return fileDao.getOrNull(id)?.asAudio()
+    }
+
+    override suspend fun findAudiosByItemId(itemId: String): List<Audio> {
+        return fileDao.playerFilesByItemId(itemId)
+            .filter { it.isPlayable() }
+            .distinctBy { it.title }
+            .map { it.asAudio() }
+    }
+}
+
+fun File.asAudio() = Audio(
+    id = fileId,
+    title = title,
+    artist = creator,
+    album = itemTitle,
+    albumId = itemId,
+    duration = duration,
+    playbackUrl = playbackUrl.orEmpty(),
+    localUri = localUri,
+    coverImage = coverImage
+)
+```
+
+<ParamField path="playbackUrl" type="String">
+  The streaming URL for the audio file from Archive.org
+</ParamField>
+
+<ParamField path="localUri" type="String?">
+  Optional local file URI for downloaded audio files
+</ParamField>
+
+<ParamField path="duration" type="Long">
+  Audio duration in seconds, parsed from the file's time metadata
+</ParamField>
+
+## Playback Control
+
+The `PlaybackViewModel` provides high-level playback control and navigation:
+
+```kotlin ui/shared/src/commonMain/kotlin/com/kafka/shared/playback/PlaybackViewModel.kt
+class PlaybackViewModel @Inject constructor(
+    private val playbackConnection: PlaybackConnection,
+    private val fileDao: FileDao,
+    private val navigator: Navigator,
+    private val remoteConfig: RemoteConfig,
+) : ViewModel() {
+    val playerTheme by lazy { remoteConfig.getPlayerTheme() }
+
+    fun goToAlbum() {
+        viewModelScope.launch(Dispatchers.IO) {
+            playbackConnection.nowPlaying.value.id.toMediaId().value.let { id ->
+                fileDao.getOrNull(id)!!.let { file ->
+                    navigator.navigate(Screen.ItemDetail(file.itemId))
+                }
+            }
+        }
+    }
+
+    fun goToCreator() {
+        viewModelScope.launch {
+            val artist = playbackConnection.nowPlaying.value.artist.orEmpty()
+            navigator.navigate(
+                route = Search(keyword = artist, filters = SearchFilter.Creator.name),
+                root = RootScreen.Search
+            )
+        }
+    }
+}
+```
+
+## Supported Audio Formats
+
+Kafka supports the following audio formats for playback:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/entities/File.kt
+val audioExtensions = listOf("mp3", "wav", "m4a", "ogg", "aac", "flac", "webm")
+val playableExtensions = listOf("mp3", "wav", "m4a", "ogg", "aac", "flac", "webm")
+```
+
+## Key Features
+
+- **Streaming Support**: Direct streaming from Archive.org without downloading
+- **Offline Playback**: Support for locally downloaded audio files
+- **Media Session**: System-level integration with notification controls
+- **Sleep Timer**: Built-in sleep timer functionality from Sarahang
+- **Background Playback**: Continues playing when app is in background
+- **Format Support**: Wide range of audio formats including FLAC for high-quality audio
+
+## Dependencies
+
+The Sarahang library is included as a local project dependency:
+
+```gradle settings.gradle
+include ':core-playback'
+include ':ui-playback'
+project(':core-playback').projectDir = new File(settingsDir, '../Sarahang/core-playback')
+project(':ui-playback').projectDir = new File(settingsDir, '../Sarahang/ui-playback')
+```
+
+Sarahang internally uses:
+- **Media3 (ExoPlayer)**: For actual media playback
+- **MediaSession**: For system integration and controls
+- **Kotlin Coroutines**: For asynchronous operations
+
+## Media Notifications
+
+The `MediaNotifications` component provides system-level notification controls, allowing users to control playback from the notification shade and lock screen.

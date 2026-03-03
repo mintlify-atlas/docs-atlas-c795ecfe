@@ -1,0 +1,136 @@
+---
+title: 'Installation'
+description: 'Download and install Kafka on your Android device'
+---
+
+# Installing Kafka
+
+Kafka is available as an Android APK that you can download and install on your device. Follow this guide to get started.
+
+## System Requirements
+
+Before installing Kafka, ensure your device meets these requirements:
+
+- **Android Version**: Android 7.0 (Nougat) or higher (API level 24+)
+- **Recommended**: Android 10 or higher for the best experience
+- **Storage**: At least 100 MB free space for the app
+- **Internet**: Required for browsing and streaming content (offline mode available after downloading)
+
+<Note>
+  The current version of Kafka is **v0.48.0** (build 88). The app targets Android 14 (API level 34) but is compatible with devices running Android 7.0+.
+</Note>
+
+## Download Kafka
+
+<Steps>
+  <Step title="Visit GitHub Releases">
+    Navigate to the [Kafka Releases page](https://github.com/vipulyaara/Kafka/releases) on GitHub to find the latest version.
+  </Step>
+  
+  <Step title="Download the APK">
+    Download the latest `.apk` file from the releases page. Look for the file named something like `kafka-v0.48.0.apk`.
+  </Step>
+  
+  <Step title="Enable Unknown Sources">
+    Before installing, you need to allow installation from unknown sources:
+    
+    - Go to **Settings** > **Security** (or **Privacy**)
+    - Find **Install unknown apps** or **Unknown sources**
+    - Select your browser or file manager
+    - Toggle on **Allow from this source**
+    
+    <Note>
+      On Android 8.0+, this permission is per-app rather than system-wide for better security.
+    </Note>
+  </Step>
+  
+  <Step title="Install the APK">
+    - Open your device's **Downloads** folder or notification
+    - Tap on the downloaded Kafka APK file
+    - Review the app permissions
+    - Tap **Install**
+    - Wait for the installation to complete
+  </Step>
+  
+  <Step title="Launch Kafka">
+    Once installed, tap **Open** or find the Kafka icon in your app drawer to launch the application.
+  </Step>
+</Steps>
+
+## Required Permissions
+
+Kafka requires the following permissions to function properly:
+
+### Essential Permissions
+
+- **Internet Access** (`INTERNET`)
+  - Required to browse and stream content from archive.org
+  - Essential for all app functionality
+
+- **Network State** (`ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`)
+  - Used to check connectivity status
+  - Helps optimize streaming vs. downloaded content
+
+### Optional Permissions
+
+- **Storage** (`READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`)
+  - Used for downloading books and audiobooks
+  - Allows you to access content offline
+  - You can deny this if you only want to stream content
+
+- **Foreground Service** (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`)
+  - Required for background audio playback
+  - Allows audiobooks to continue playing when you switch apps
+  - Enables playback controls in notification shade
+
+- **Wake Lock** (`WAKE_LOCK`)
+  - Prevents device from sleeping during audio playback
+  - Ensures uninterrupted listening experience
+
+<Info>
+  Kafka follows Android's permission best practices and only requests permissions when needed for specific features.
+</Info>
+
+## Troubleshooting
+
+### Installation Blocked
+
+If you see "Installation blocked" or similar message:
+
+1. Make sure you've enabled installation from unknown sources for your browser/file manager
+2. Check that you have enough storage space
+3. Try clearing your browser's download cache
+4. Re-download the APK file
+
+### App Won't Open
+
+If Kafka crashes on launch:
+
+1. Verify your Android version is 7.0 or higher
+2. Clear the app's cache: **Settings** > **Apps** > **Kafka** > **Storage** > **Clear Cache**
+3. Restart your device
+4. Reinstall the app
+
+### Parse Error
+
+If you get a "Parse error" message:
+
+1. Make sure you downloaded the complete APK file (check file size)
+2. Re-download the APK
+3. Ensure you're downloading from the official GitHub releases page
+
+## Updating Kafka
+
+To update to a newer version:
+
+1. Download the latest APK from GitHub releases
+2. Install it over your existing installation
+3. Your data and settings will be preserved
+
+<Note>
+  Kafka does not auto-update. Check the GitHub releases page periodically for new versions with bug fixes and features.
+</Note>
+
+## Next Steps
+
+Now that you have Kafka installed, check out the [Quick Start Guide](/quickstart) to learn how to use the app and start exploring millions of books and audiobooks!

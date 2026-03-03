@@ -1,80 +1,281 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quick Start Guide'
+description: 'Get started with Kafka and explore millions of books and audiobooks'
 ---
 
-## Get started in three steps
+# Quick Start Guide
 
-Get your documentation site running locally and make your first customization.
+This guide will help you get started with Kafka and explore its features. Within minutes, you'll be reading books and listening to audiobooks from archive.org's vast collection.
 
-### Step 1: Set up your local environment
+## First Launch
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+When you first open Kafka, you'll see the login screen with the Kafka logo. You have two options:
+
+<Steps>
+  <Step title="Sign Up or Sign In">
+    Kafka offers multiple authentication options:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    **Email & Password**
+    - Tap the email field and enter your email address
+    - Enter a password (for signup) or your existing password (for login)
+    - For new users, the form will create an account
+    - Existing users will be signed in
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    **Sign in with Google** (if enabled)
+    - Tap "Continue with Google" button
+    - Select your Google account
+    - Grant necessary permissions
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    **Skip Login**
+    - Tap the back button to explore the app without signing in
+    - You can still browse, read, and listen to content
+    - Some features like cloud sync require an account
+    
+    <Info>
+      Creating an account lets you sync your favorites and reading progress across devices. However, you can use Kafka anonymously if preferred.
+    </Info>
+  </Step>
+  
+  <Step title="Explore the Homepage">
+    After login (or skipping), you'll land on the homepage featuring:
+    
+    - **Featured Carousels**: Curated collections of popular content
+    - **Recent Items**: Continue reading/listening where you left off
+    - **Subject Categories**: Browse by genre (Fiction, History, Science, etc.)
+    - **Author Rows**: Discover works by popular authors
+    - **Recommended Content**: Personalized suggestions based on your interests
+    
+    The homepage is built with the following components from `ui/homepage`:
+    ```kotlin
+    // Homepage collections include:
+    HomepageCollection.FeaturedItem  // Featured carousels
+    HomepageCollection.RecentItems   // Continue reading
+    HomepageCollection.Subjects      // Genre tags
+    HomepageCollection.PersonRow     // Author listings
+    HomepageCollection.Row          // Horizontal item rows
+    HomepageCollection.Grid         // Grid layouts
+    HomepageCollection.Column       // Vertical listings
+    ```
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Browsing Content
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Use Search">
+    Tap the search icon to access Kafka's powerful search:
+    
+    - Search through 41 million books and 14.5 million audio recordings
+    - Use filters to narrow results by format, language, date, etc.
+    - All content is tagged and searchable
+    - Results show both audiobooks and text versions when available
+  </Step>
+  
+  <Step title="Browse by Subject">
+    On the homepage, tap any subject tag to explore content by category:
+    
+    - Fiction, Non-fiction, History, Science
+    - Poetry, Drama, Philosophy
+    - And hundreds more categories
+    
+    The homepage displays subjects as interactive chips that you can tap to explore.
+  </Step>
+  
+  <Step title="Discover Authors">
+    Browse the author rows on the homepage to find works by specific creators:
+    
+    - Tap an author's profile to see all their available works
+    - Explore both their audiobooks and written works
+    - Authors are displayed with profile images when available
+  </Step>
+</Steps>
 
-### Step 3: Go live
+## Playing Your First Audiobook
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+<Steps>
+  <Step title="Find an Audiobook">
+    - Browse the homepage or search for a title
+    - Audiobook items are marked with audio indicators
+    - Tap on any audiobook to open its detail page
+  </Step>
+  
+  <Step title="Start Playback">
+    On the item detail page:
+    
+    - Tap the **Play** button to start streaming
+    - The audio player appears at the bottom of the screen
+    - Playback continues in the background when you navigate away
+  </Step>
+  
+  <Step title="Use Playback Controls">
+    Kafka's audio player includes:
+    
+    - **Play/Pause**: Control playback
+    - **Skip Forward/Back**: Jump 10 seconds
+    - **Playback Speed**: Adjust from 0.5x to 2.5x
+    - **Sleep Timer**: Auto-stop after a set duration
+    - **Progress Bar**: Seek to any position
+    
+    <Info>
+      The player uses ExoPlayer for seamless background playback. You can control it from the notification shade or lock screen.
+    </Info>
+  </Step>
+</Steps>
 
-## Next steps
+## Reading Your First Book
 
-Now that you have your docs running, explore these key features:
+<Steps>
+  <Step title="Open a PDF Book">
+    - Find a book with PDF format available
+    - Tap the book to open its detail page
+    - Tap **Read** to open the PDF reader
+  </Step>
+  
+  <Step title="Navigate the Reader">
+    Kafka supports multiple reader formats:
+    
+    - **PDF Reader** (`ui/reader/pdf`): For PDF documents with zoom and page navigation
+    - **EPUB Reader** (`ui/reader/epub`): For EPUB files with customizable fonts and layout
+    - **Online Reader** (`ui/reader/online`): For web-based reading
+    
+    Common features:
+    - Swipe or tap to turn pages
+    - Pinch to zoom (PDF)
+    - Your reading position is automatically saved
+  </Step>
+  
+  <Step title="Continue Reading">
+    When you return to the homepage, books you've started appear in the **Recent Items** section:
+    
+    - Tap any recent item to resume reading from where you left off
+    - Swipe to remove items from your recent list
+    - Tap "See All" to view your complete reading history
+  </Step>
+</Steps>
 
-<CardGroup cols={2}>
+## Building Your Library
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+<Steps>
+  <Step title="Add to Favorites">
+    To save books for later:
+    
+    - Open any book's detail page
+    - Tap the **Star** or **Favorite** icon
+    - The item is added to your Favorites in the Library tab
+    
+    <Note>
+      Favorites are synced to the cloud if you have an account. Without an account, favorites are stored locally.
+    </Note>
+  </Step>
+  
+  <Step title="Access Your Library">
+    Navigate to the Library tab (bottom navigation):
+    
+    - **Favorites Tab**: All your saved books and audiobooks
+    - **Downloads Tab**: Content you've downloaded for offline access
+    
+    From `ui/library/LibraryScreen.kt`:
+    ```kotlin
+    LibraryTab.Favorites  // Your saved items
+    LibraryTab.Downloads  // Offline content
+    ```
+  </Step>
+  
+  <Step title="Change Library View">
+    Customize how your library appears:
+    
+    - Tap the layout icon in the Library
+    - Choose between **List View** or **Grid View**
+    - Your preference is saved automatically
+  </Step>
+</Steps>
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+## Downloading for Offline Access
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+<Steps>
+  <Step title="Download Content">
+    To access books and audiobooks offline:
+    
+    - Open the item detail page
+    - Tap the **Download** button
+    - Wait for the download to complete
+    - Access downloaded content from Library > Downloads tab
+    
+    <Info>
+      Downloads are stored on your device and can be shared freely. Make sure you have sufficient storage space.
+    </Info>
+  </Step>
+  
+  <Step title="Manage Downloads">
+    In the Downloads tab:
+    
+    - View download progress for active downloads
+    - Tap downloaded items to read/listen offline
+    - Long-press to delete downloads and free up space
+  </Step>
+</Steps>
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+## Sharing Content
 
-</CardGroup>
+Kafka makes it easy to share discoveries:
+
+- **Deep Links**: Share direct links to books within the app
+- **External Sharing**: Share archive.org links that work in any browser
+- **Downloaded Files**: Share downloaded content freely (it's all public domain!)
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Kafka supports deep linking to URLs like `https://kafkaarchives.org/*` and `https://kafka-books.web.app/*`
 </Note>
+
+## Tips & Tricks
+
+### Dark Theme
+
+- Kafka supports a beautiful dark theme with Material You colors
+- The theme automatically adapts to your device's color scheme
+- Colors dynamically match your Android 12+ wallpaper
+
+### Search Filters
+
+- Use advanced filters when searching to find exactly what you want
+- Filter by media type (audio, text, video)
+- Filter by language, date, and more
+- Save search queries for quick access
+
+### Background Playback
+
+- Audiobooks continue playing when you:
+  - Switch to another app
+  - Lock your screen
+  - Navigate within Kafka
+- Control playback from the notification shade
+- Use the system media controls on your lock screen
+
+### Continue Reading
+
+- Your reading position is automatically saved
+- The homepage shows your recent items at the top
+- Resume reading with a single tap
+- Works for both books and audiobooks
+
+## Need Help?
+
+If you encounter issues:
+
+1. Check that you have a stable internet connection
+2. Ensure you're using the latest version of Kafka
+3. Try clearing the app cache: **Settings** > **Apps** > **Kafka** > **Storage** > **Clear Cache**
+4. Visit the [GitHub repository](https://github.com/vipulyaara/Kafka) for support
+5. Check [kafkaarchives.com](https://www.kafkaarchives.com) for updates
+
+## What's Next?
+
+Now that you know the basics:
+
+- Explore the 41 million books and 14.5 million audiobooks available
+- Build your personal library of favorites
+- Download content for offline reading and listening
+- Discover new authors and genres
+- Share your favorite finds with friends
+
+Happy reading and listening! 📚🎧

@@ -1,0 +1,379 @@
+---
+title: Building the Project
+description: Build and run Kafka on your local machine
+---
+
+This guide covers building and running the Kafka project in different configurations.
+
+## Build Configuration
+
+Kafka uses Gradle with Kotlin DSL for build configuration. The project is configured with:
+
+- **Compile SDK:** 36
+- **Min SDK:** 24 (Android 7.0)
+- **Target SDK:** 34 (Android 14)
+- **Java Version:** 17
+- **Kotlin:** 2.3.0
+
+## Build Types
+
+Kafka supports multiple build types defined in `app/build.gradle.kts`:
+
+### Debug Build
+
+The debug build is optimized for development:
+
+```kotlin
+debug {
+    signingConfig = signingConfigs["debug"]
+    versionNameSuffix = "-dev"
+    applicationIdSuffix = ".debug"
+}
+```
+
+- **Application ID:** `com.kafka.user.debug`
+- **Minification:** Disabled
+- **Debuggable:** Yes
+
+<CodeGroup>
+```bash Terminal
+# Build debug APK
+./gradlew assembleDebug
+
+# Install and run debug build
+./gradlew installDebug
+```
+
+```bash Windows
+# Build debug APK
+gradlew.bat assembleDebug
+
+# Install and run debug build
+gradlew.bat installDebug
+```
+</CodeGroup>
+
+### Release Build
+
+The release build is optimized for production with code shrinking and obfuscation:
+
+```kotlin
+release {
+    signingConfig = signingConfigs["debug"]
+    isShrinkResources = true
+    isMinifyEnabled = true
+    proguardFiles("proguard-rules.pro")
+}
+```
+
+<CodeGroup>
+```bash Terminal
+# Build release APK
+./gradlew assembleRelease
+
+# Build release bundle (for Play Store)
+./gradlew bundleRelease
+```
+
+```bash Windows
+# Build release APK
+gradlew.bat assembleRelease
+
+# Build release bundle
+gradlew.bat bundleRelease
+```
+</CodeGroup>
+
+<Warning>
+Release builds use R8 full mode for aggressive code shrinking. Build times will be significantly longer than debug builds.
+</Warning>
+
+### RC (Release Candidate) Build
+
+For testing release builds before production:
+
+```kotlin
+create("rc") {
+    initWith(buildTypes["release"])
+    signingConfig = signingConfigs["debug"]
+    versionNameSuffix = "-rc"
+    applicationIdSuffix = ".rc"
+}
+```
+
+- **Application ID:** `com.kafka.user.rc`
+- **Minification:** Enabled
+- **Allows side-by-side installation with debug and release builds**
+
+```bash
+./gradlew assembleRc
+```
+
+### Benchmark Build
+
+Optimized for performance testing:
+
+```kotlin
+create("benchmark") {
+    initWith(buildTypes["release"])
+    signingConfig = signingConfigs["debug"]
+    matchingFallbacks += "release"
+    proguardFiles("proguard-rules.pro")
+}
+```
+
+```bash
+./gradlew assembleBenchmark
+```
+
+## Running the App
+
+### From Android Studio
+
+<Steps>
+  <Step title="Select Build Variant">
+    1. Click **Build > Select Build Variant** in the menu
+    2. Choose your desired build variant (debug, release, rc, or benchmark)
+    3. Select the appropriate variant for the app module
+  </Step>
+
+  <Step title="Run Configuration">
+    1. Ensure your device or emulator is connected
+    2. Select the target device from the device dropdown
+    3. Click the **Run** button (green play icon) or press `Shift+F10`
+  </Step>
+</Steps>
+
+### From Command Line
+
+<CodeGroup>
+```bash Install and Launch
+# Install debug build and launch
+./gradlew installDebug
+adb shell am start -n com.kafka.user.debug/.MainActivity
+
+# Or use the run task
+./gradlew runDebug
+```
+
+```bash Specific Device
+# Install on specific device
+adb -s <device-id> install app/build/outputs/apk/debug/app-debug.apk
+
+# List connected devices
+adb devices
+```
+</CodeGroup>
+
+## Build Output Location
+
+Built APKs and bundles are located in:
+
+```
+app/build/outputs/
+├── apk/
+│   ├── debug/
+│   │   └── app-debug.apk
+│   ├── release/
+│   │   └── app-release.apk
+│   ├── rc/
+│   │   └── app-rc.apk
+│   └── benchmark/
+│       └── app-benchmark.apk
+└── bundle/
+    └── release/
+        └── app-release.aab
+```
+
+## Gradle Tasks
+
+### Common Tasks
+
+<CodeGroup>
+```bash Clean Build
+# Clean build outputs
+./gradlew clean
+
+# Clean and rebuild
+./gradlew clean assembleDebug
+```
+
+```bash Dependency Updates
+# Check for dependency updates
+./gradlew dependencyUpdates
+
+# Refresh dependencies
+./gradlew build --refresh-dependencies
+```
+
+```bash Code Quality
+# Run Spotless formatting
+./gradlew spotlessApply
+
+# Check code formatting
+./gradlew spotlessCheck
+
+# Run lint checks
+./gradlew lintDebug
+```
+</CodeGroup>
+
+### Module-Specific Builds
+
+Build specific modules:
+
+```bash
+# Build a specific module
+./gradlew :ui:homepage:assembleDebug
+
+# Build all modules
+./gradlew assembleDebug
+
+# List all tasks for a module
+./gradlew :app:tasks
+```
+
+## Compose Compiler Metrics
+
+To generate Compose compiler metrics and reports:
+
+```bash
+./gradlew assembleDebug -Ptivi.enableComposeCompilerReports=true
+```
+
+Reports will be generated in:
+```
+build/compose_metrics/
+├── <module>-composables.txt
+├── <module>-classes.txt
+└── <module>-module.json
+```
+
+<Note>
+Compose compiler reports help identify optimization opportunities in your Composable functions.
+</Note>
+
+## Baseline Profiles
+
+Kafka uses baseline profiles for improved app startup and runtime performance:
+
+```bash
+# Generate baseline profile
+./gradlew :baselineprofile:generateBaselineProfile
+
+# Generate using connected device
+./gradlew :baselineprofile:generateBaselineProfile -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile
+```
+
+The baseline profile configuration uses a Pixel 6 API 31 managed device or any connected device.
+
+## Optimization Settings
+
+### ProGuard/R8 Rules
+
+Release builds use R8 for code shrinking and obfuscation. Custom rules are defined in `app/proguard-rules.pro`.
+
+Key settings from `gradle.properties`:
+
+```properties
+# Enable R8 full mode for aggressive optimization
+android.enableR8.fullMode=true
+
+# Optimize resources
+android.enableResourceOptimizations=true
+
+# Disable unused build features
+android.defaults.buildfeatures.resvalues=false
+android.defaults.buildfeatures.shaders=false
+```
+
+### Build Performance
+
+Optimize build performance with these settings (already configured):
+
+```properties
+# Gradle daemon settings
+org.gradle.jvmargs=-Xmx6020m -Dfile.encoding=UTF-8
+org.gradle.caching=true
+org.gradle.parallel=true
+org.gradle.configureondemand=true
+
+# Kotlin incremental compilation
+kapt.use.worker.api=true
+kapt.incremental.apt=true
+```
+
+## CI/CD Build
+
+The project includes a GitHub Actions workflow for automated builds. Reference: `.github/workflows/build-release.yml`
+
+Key CI steps:
+
+<Steps>
+  <Step title="Checkout Code">
+    Both Kafka and Sarahang repositories are checked out
+  </Step>
+  
+  <Step title="Setup JDK 17">
+    Uses Temurin distribution with Gradle caching
+  </Step>
+  
+  <Step title="Configure Secrets">
+    - Google Services JSON
+    - Release keystore
+    - API tokens from environment variables
+  </Step>
+  
+  <Step title="Build Release">
+    ```bash
+    ./gradlew assembleRelease
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Build Failures
+
+<AccordionGroup>
+  <Accordion title="Sarahang modules not found">
+    Ensure Sarahang is cloned in the parent directory:
+    ```bash
+    cd ..
+    ls -la  # Should show both Kafka/ and Sarahang/
+    ```
+  </Accordion>
+
+  <Accordion title="Out of memory errors">
+    Increase Gradle memory allocation in `gradle.properties`:
+    ```properties
+    org.gradle.jvmargs=-Xmx8192m -Dfile.encoding=UTF-8
+    ```
+  </Accordion>
+
+  <Accordion title="Compilation errors after git pull">
+    Clean and rebuild:
+    ```bash
+    ./gradlew clean
+    ./gradlew assembleDebug --refresh-dependencies
+    ```
+  </Accordion>
+
+  <Accordion title="Slow build times">
+    - Enable parallel builds (already configured)
+    - Use Gradle daemon (already configured)
+    - Consider using configuration cache
+    - Close other applications to free memory
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Learn about testing strategies
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Contribute to the project
+  </Card>
+</CardGroup>

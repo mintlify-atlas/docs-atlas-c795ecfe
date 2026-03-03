@@ -1,0 +1,374 @@
+---
+title: User Authentication
+description: Sign in with Google, email, or use the app anonymously
+icon: user-lock
+---
+
+Kafka offers flexible authentication options to suit your preferences. Sign in with Google, create an account with email, or use the app anonymously. Signing in enables cross-device syncing of favorites and reading progress.
+
+## Sign In Options
+
+Kafka provides three ways to use the app:
+
+<CardGroup cols={3}>
+  <Card title="Google Sign In" icon="google">
+    Quick sign-in using your Google account. Automatic authentication with no password to remember.
+  </Card>
+  
+  <Card title="Email & Password" icon="envelope">
+    Create an account with your email address and a secure password you choose.
+  </Card>
+  
+  <Card title="Anonymous Use" icon="user-secret">
+    Use the app without signing in. All features work, but data stays on your device only.
+  </Card>
+</CardGroup>
+
+## Why Sign In?
+
+Creating an account unlocks syncing features:
+
+### Benefits of Signing In
+
+- **Sync favorites** - Access your favorite items on all devices
+- **Resume anywhere** - Reading positions sync across devices
+- **Preserve history** - Recent items available everywhere
+- **Backup data** - Never lose your library if you change devices
+- **Recommendations** - Get personalized suggestions based on your reading
+
+### Anonymous Mode
+
+You can use Kafka without signing in:
+- All reading and listening features work
+- Downloads work normally
+- Data stored locally on device only
+- No syncing across devices
+- Data lost if app is uninstalled
+
+<Note>
+  You can sign in later without losing data. Your local favorites and history will merge with your cloud account.
+</Note>
+
+## Signing In with Google
+
+The fastest way to get started:
+
+<Steps>
+  <Step title="Open sign-in screen">
+    Tap "Sign In" from the profile page or the prompt in your Library.
+  </Step>
+  
+  <Step title="Select Google sign-in">
+    Tap the "Continue with Google" button.
+  </Step>
+  
+  <Step title="Choose account">
+    Select your Google account from the list or add a new account.
+  </Step>
+  
+  <Step title="Grant permissions">
+    Allow Kafka to access your basic profile information (name and email).
+  </Step>
+  
+  <Step title="Start using Kafka">
+    You're signed in! Your favorites and progress will now sync automatically.
+  </Step>
+</Steps>
+
+### Google Sign-In Security
+
+- Uses OAuth 2.0 for secure authentication
+- Kafka never sees your Google password
+- Only basic profile information is accessed
+- You can revoke access anytime from Google account settings
+
+<Tip>
+  Google Sign-In is the quickest option and doesn't require remembering another password.
+</Tip>
+
+## Creating an Email Account
+
+Sign up with email and password:
+
+<Steps>
+  <Step title="Open sign-up">
+    From the sign-in screen, tap "New User? Signup here" at the bottom.
+  </Step>
+  
+  <Step title="Enter email">
+    Type your email address in the email field.
+  </Step>
+  
+  <Step title="Create password">
+    Enter a secure password. Requirements:
+    - At least 6 characters
+    - Combination of letters and numbers recommended
+  </Step>
+  
+  <Step title="Confirm signup">
+    Tap the "Sign Up" button to create your account.
+  </Step>
+  
+  <Step title="Verify email">
+    Check your email for a verification link and click it to activate your account.
+  </Step>
+</Steps>
+
+### Email Requirements
+
+- Must be a valid email address
+- Each email can only be used once
+- Used for password resets and account recovery
+- Not shared with third parties
+
+<Note>
+  **Keep your password safe:** Store your password in a password manager or somewhere secure. You'll need it to sign in on other devices.
+</Note>
+
+## Signing In with Email
+
+Return to your account on any device:
+
+<Steps>
+  <Step title="Open login screen">
+    Tap "Sign In" from the profile page.
+  </Step>
+  
+  <Step title="Enter credentials">
+    Type your registered email and password.
+  </Step>
+  
+  <Step title="Sign in">
+    Tap the "Login" button to access your account.
+  </Step>
+  
+  <Step title="Syncing begins">
+    Your favorites and reading progress sync automatically after signing in.
+  </Step>
+</Steps>
+
+### Forgot Password
+
+If you can't remember your password:
+
+<Steps>
+  <Step title="Tap forgot password">
+    On the login screen, tap "Forgot password?" below the password field.
+  </Step>
+  
+  <Step title="Enter email">
+    Type the email address associated with your account.
+  </Step>
+  
+  <Step title="Check email">
+    Look for a password reset email from Kafka.
+  </Step>
+  
+  <Step title="Reset password">
+    Click the reset link in the email and create a new password.
+  </Step>
+  
+  <Step title="Sign in">
+    Return to Kafka and sign in with your new password.
+  </Step>
+</Steps>
+
+<Tip>
+  Check your spam folder if you don't receive the password reset email within a few minutes.
+</Tip>
+
+## Account Management
+
+Manage your Kafka account:
+
+### Viewing Account Information
+
+<Steps>
+  <Step title="Open profile">
+    Tap your profile icon in the top-right corner of the homepage.
+  </Step>
+  
+  <Step title="View details">
+    See your account information:
+    - Sign-in method (Google or Email)
+    - Email address
+    - Account creation date
+  </Step>
+</Steps>
+
+### Signing Out
+
+Log out of your account:
+
+<Steps>
+  <Step title="Open profile page">
+    Tap your profile icon to open the profile screen.
+  </Step>
+  
+  <Step title="Select sign out">
+    Scroll down and tap "Sign Out" button.
+  </Step>
+  
+  <Step title="Confirm action">
+    Confirm you want to sign out.
+  </Step>
+  
+  <Step title="Switch to anonymous">
+    You're now using Kafka anonymously. Your cloud data is safe and will return when you sign in again.
+  </Step>
+</Steps>
+
+<Note>
+  Signing out doesn't delete your account or cloud data. Your favorites and progress remain saved in the cloud.
+</Note>
+
+## Switching Accounts
+
+Switch between different accounts:
+
+<Steps>
+  <Step title="Sign out">
+    First, sign out of your current account from the profile page.
+  </Step>
+  
+  <Step title="Sign in again">
+    Go to the sign-in screen.
+  </Step>
+  
+  <Step title="Choose different account">
+    Sign in with a different Google account or email address.
+  </Step>
+  
+  <Step title="Data switches">
+    Your favorites and progress change to match the new account.
+  </Step>
+</Steps>
+
+## Data Syncing
+
+Understand how your data syncs:
+
+### What Syncs
+
+When signed in, these items sync automatically:
+
+<CardGroup cols={2}>
+  <Card title="Favorites" icon="heart">
+    All items you've favorited appear on all signed-in devices.
+  </Card>
+  
+  <Card title="Reading Progress" icon="book-bookmark">
+    Current page/position for each item syncs across devices.
+  </Card>
+  
+  <Card title="Recent Items" icon="clock-rotate-left">
+    Your reading history stays consistent everywhere.
+  </Card>
+  
+  <Card title="Preferences" icon="sliders">
+    Some app preferences sync (like reader settings).
+  </Card>
+</CardGroup>
+
+### What Doesn't Sync
+
+- **Downloaded files** - Downloads are device-specific
+- **Download location** - Each device has its own setting
+- **Recent searches** - Search history is local only
+- **Playback queue** - Audio queues don't sync
+
+### Sync Timing
+
+- **Automatic** - Syncing happens in the background
+- **Immediate** - Changes upload within seconds
+- **On launch** - Full sync when you open the app
+- **Requires internet** - Syncing needs an active connection
+
+<Tip>
+  If syncing seems delayed, check your internet connection and try pulling down to refresh on the Library page.
+</Tip>
+
+## Privacy and Security
+
+Your data is protected:
+
+### Data Protection
+
+- **Encrypted transmission** - All data sent securely over HTTPS
+- **Secure storage** - Cloud data stored with industry-standard encryption
+- **No data selling** - Your information is never sold to third parties
+- **Minimal collection** - Only email and usage data collected
+
+### Privacy Controls
+
+- **Delete account** - Contact support to delete your account and all data
+- **Export data** - Request a copy of your data anytime
+- **Revoke access** - Remove Google sign-in access from Google account settings
+
+<Note>
+  Read the full privacy policy at kafka.app/privacy for complete details on data handling.
+</Note>
+
+## Troubleshooting Sign-In
+
+Resolve common authentication issues:
+
+### Can't Sign In
+
+<CardGroup cols={2}>
+  <Card title="Wrong Password" icon="key">
+    - Use "Forgot password" to reset
+    - Check for typos
+    - Try typing password in notes app first
+    - Ensure CAPS LOCK is off
+  </Card>
+  
+  <Card title="Google Sign-In Fails" icon="google">
+    - Check Google Play Services is updated
+    - Try selecting account again
+    - Sign out of Google and back in
+    - Verify internet connection
+  </Card>
+  
+  <Card title="Account Not Found" icon="user-slash">
+    - Verify email address is correct
+    - Check if you signed up with Google instead
+    - Try alternate email addresses
+    - Create new account if needed
+  </Card>
+  
+  <Card title="Email Not Verified" icon="envelope-open-text">
+    - Check email inbox and spam
+    - Request new verification email
+    - Wait a few minutes and try again
+    - Ensure email address is correct
+  </Card>
+</CardGroup>
+
+### Syncing Issues
+
+If your data isn't syncing:
+
+1. **Verify sign-in** - Ensure you're signed into the same account on all devices
+2. **Check internet** - Syncing requires active internet connection
+3. **Force sync** - Pull to refresh on Library page
+4. **Sign out and in** - Try signing out and back in to force sync
+5. **Wait a moment** - Give sync a few seconds to complete
+
+<Tip>
+  Most sign-in issues are resolved by ensuring you're using the correct email address and password, and that you have a stable internet connection.
+</Tip>
+
+## Best Practices
+
+Get the most from Kafka authentication:
+
+- **Sign in early** - Create an account when you first start using Kafka to enable syncing from the beginning
+- **Use strong passwords** - If using email signup, choose a secure, unique password
+- **Keep email current** - Use an email address you regularly check for recovery
+- **Sign in on all devices** - Use the same account on all your devices to keep everything in sync
+- **Stay signed in** - No need to sign out unless sharing your device
+
+<Card title="Recommended: Google Sign-In" icon="check-circle">
+  For most users, Google Sign-In provides the best experience: it's quick, secure, and doesn't require remembering another password.
+</Card>

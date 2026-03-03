@@ -1,0 +1,239 @@
+---
+title: PDF Rendering
+description: PDF rendering implementation using AndroidPdfViewer for displaying PDF documents from Archive.org
+---
+
+Kafka uses the [AndroidPdfViewer](https://github.com/DImuthuUpe/AndroidPdfViewer) library (formerly barteksc/AndroidPdfViewer) to render PDF documents. The implementation provides smooth scrolling, zoom controls, and page navigation for reading PDF files from Archive.org's collection.
+
+## Library Overview
+
+AndroidPdfViewer is based on PdfiumAndroid and provides:
+- Fast PDF rendering with native code
+- Smooth scroll and zoom animations
+- Page snap and fit-to-width modes
+- Custom page spacing and scroll handles
+
+<ParamField path="version" type="String" default="3.1.0-beta.1">
+  AndroidPdfViewer version used in Kafka
+</ParamField>
+
+## Implementation
+
+The PDF viewer is implemented as a multiplatform Compose component with Android-specific rendering:
+
+### Android Implementation
+
+```kotlin ui/reader/pdf/src/main/java/com/kafka/reader/pdf/PdfViewer.android.kt
+@Composable
+actual fun PdfViewer(pdfState: PdfState, modifier: Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = {
+            PDFView(it, null).apply {
+                maxZoom = MaxZoom
+                fromUri(pdfState.uri.toUri())
+                    .defaultPage(pdfState.initialPage)
+                    .spacing(12)
+                    .onPageChange { page, _ -> pdfState.onPageChange(page) }
+                    .scrollHandle(DefaultScrollHandle(it))
+                    .onError { t -> pdfState.onError(t) }
+                    .load()
+            }
+        }
+    ) { }
+}
+```
+
+<ParamField path="maxZoom" type="Float" default="3.0">
+  Maximum zoom level allowed for the PDF viewer
+</ParamField>
+
+<ParamField path="spacing" type="Int" default="12">
+  Spacing between pages in pixels
+</ParamField>
+
+### PDF State Management
+
+The `PdfState` class manages the viewer's state and callbacks:
+
+```kotlin ui/reader/pdf/src/commonMain/kotlin/com/kafka/reader/pdf/PdfViewer.kt
+data class PdfState(
+    val uri: String,
+    val initialPage: Int = 0,
+    val onPageChange: (Int) -> Unit = {},
+    val onError: (Throwable) -> Unit = {}
+)
+```
+
+<ParamField path="uri" type="String">
+  The URI of the PDF file to display (can be local or remote)
+</ParamField>
+
+<ParamField path="initialPage" type="Int" default="0">
+  The page number to display when the PDF is first loaded (0-indexed)
+</ParamField>
+
+<ParamField path="onPageChange" type="(Int) -> Unit">
+  Callback invoked when the user navigates to a different page
+</ParamField>
+
+<ParamField path="onError" type="(Throwable) -> Unit">
+  Callback invoked when an error occurs during PDF loading or rendering
+</ParamField>
+
+## Reader Screen
+
+The `ReaderScreen` component provides a complete PDF reading experience:
+
+```kotlin ui/reader/pdf/src/commonMain/kotlin/com/kafka/reader/ReaderScreen.kt
+@Composable
+fun ReaderScreen(
+    viewModel: ReaderViewModel,
+    modifier: Modifier = Modifier
+) {
+    val state by viewModel.state.collectAsState()
+    
+    when {
+        state.isLoading -> LoadingIndicator()
+        state.error != null -> ErrorScreen(state.error!!)
+        state.fileUri != null -> {
+            PdfViewer(
+                pdfState = PdfState(
+                    uri = state.fileUri!!,
+                    initialPage = state.currentPage,
+                    onPageChange = { page ->
+                        viewModel.updateCurrentPage(page)
+                    },
+                    onError = { error ->
+                        viewModel.handleError(error)
+                    }
+                ),
+                modifier = modifier.fillMaxSize()
+            )
+        }
+    }
+}
+```
+
+## Download Progress
+
+For remote PDFs, Kafka shows download progress while streaming:
+
+```kotlin ui/reader/pdf/src/commonMain/kotlin/com/kafka/reader/DownloadProgress.kt
+data class DownloadProgress(
+    val downloaded: Long,
+    val total: Long,
+    val progress: Float
+) {
+    val isComplete: Boolean
+        get() = downloaded >= total
+        
+    companion object {
+        val EMPTY = DownloadProgress(0, 0, 0f)
+    }
+}
+```
+
+## Reader ViewModel
+
+The `ReaderViewModel` manages PDF loading, page tracking, and error handling:
+
+```kotlin ui/reader/pdf/src/commonMain/kotlin/com/kafka/reader/ReaderViewModel.kt
+class ReaderViewModel @Inject constructor(
+    private val savedStateHandle: SavedStateHandle,
+    private val fileRepository: FileRepository,
+    private val analytics: Analytics
+) : ViewModel() {
+    
+    private val _state = MutableStateFlow(ReaderState())
+    val state: StateFlow<ReaderState> = _state.asStateFlow()
+    
+    fun loadPdf(fileId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true) }
+            try {
+                val file = fileRepository.getFile(fileId)
+                val uri = file.readerUrl ?: file.downloadUrl
+                _state.update { 
+                    it.copy(
+                        fileUri = uri,
+                        isLoading = false,
+                        currentPage = savedStateHandle.get("lastPage") ?: 0
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = e) }
+            }
+        }
+    }
+    
+    fun updateCurrentPage(page: Int) {
+        savedStateHandle["lastPage"] = page
+        _state.update { it.copy(currentPage = page) }
+        analytics.log { pdfPageChanged(page) }
+    }
+}
+```
+
+## Features
+
+### Zoom Controls
+- **Pinch to Zoom**: Natural gesture-based zooming
+- **Double Tap**: Quick zoom in/out
+- **Max Zoom**: Configurable maximum zoom level (3x by default)
+
+### Page Navigation
+- **Scroll**: Smooth vertical scrolling between pages
+- **Scroll Handle**: Visual scroll indicator showing current position
+- **Page Snap**: Pages snap to position for better reading
+- **Page Spacing**: 12px spacing between pages for clear separation
+
+### State Persistence
+- **Last Page**: Remembers the last page read
+- **Reading Progress**: Tracks reading progress for analytics
+- **Bookmarks**: Can be integrated with bookmark system
+
+## Gradle Configuration
+
+The PDF module is configured as a multiplatform library:
+
+```kotlin ui/reader/pdf/build.gradle.kts
+plugins {
+    id("com.android.library")
+    id("com.kafka.compose")
+    id("com.kafka.kotlin.multiplatform")
+}
+
+kotlin {
+    sourceSets {
+        val androidMain by getting {
+            dependencies {
+                implementation(libs.pdfviewer)
+            }
+        }
+    }
+}
+```
+
+```toml gradle/libs.versions.toml
+[versions]
+pdfviewer = "3.1.0-beta.1"
+
+[libraries]
+pdfviewer = { module = "com.github.DImuthuUpe:AndroidPdfViewer", version.ref = "pdfviewer" }
+```
+
+## Error Handling
+
+The PDF viewer handles various error scenarios:
+- **File not found**: Shows error message with retry option
+- **Corrupt PDF**: Detects and reports malformed PDF files
+- **Network errors**: Handles streaming failures gracefully
+- **Memory issues**: Efficiently manages memory for large PDFs
+
+## Performance Considerations
+
+- **Native Rendering**: Uses PdfiumAndroid for fast native PDF rendering
+- **Page Caching**: Automatically caches rendered pages for smooth scrolling
+- **Memory Management**: Releases unused resources automatically
+- **Streaming Support**: Can stream PDFs without full download

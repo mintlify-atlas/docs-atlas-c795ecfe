@@ -1,0 +1,411 @@
+---
+title: Database
+description: Room database setup with DAOs for local data persistence
+---
+
+Kafka uses [Room](https://developer.android.com/training/data-storage/room) as its local database solution. Room provides a SQLite abstraction layer with compile-time verification of SQL queries and supports Kotlin multiplatform.
+
+## Database Setup
+
+The `KafkaRoomDatabase` class defines the database configuration with all entities and migrations:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/db/KafkaDatabase.kt
+@Database(
+    entities = [
+        ItemDetail::class,
+        File::class,
+        Item::class,
+        QueueEntity::class,
+        RecentSearch::class,
+        RecentTextItem::class,
+        RecentAudioItem::class,
+        DownloadRequest::class,
+    ],
+    version = 9,
+    exportSchema = true,
+    autoMigrations = [
+        AutoMigration(from = 3, to = 4, spec = KafkaRoomDatabase.UserRemovalMigration::class),
+        AutoMigration(from = 4, to = 5, spec = KafkaRoomDatabase.RecentAudioMigration::class),
+        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 8, to = 9, spec = KafkaRoomDatabase.DownloadRequestsMigration::class),
+    ],
+)
+@ConstructedBy(KafkaDatabaseConstructor::class)
+@TypeConverters(AppTypeConverters::class)
+abstract class KafkaRoomDatabase : RoomDatabase(), KafkaDatabase {
+    @DeleteTable(tableName = "user")
+    class UserRemovalMigration : AutoMigrationSpec
+    
+    @RenameColumn(tableName = "recent_audio", fromColumnName = "fileId", toColumnName = "albumId")
+    class RecentAudioMigration : AutoMigrationSpec
+    
+    @DeleteColumn(tableName = "download_requests", columnName = "created_at")
+    @DeleteColumn(tableName = "Item", columnName = "genre")
+    class DownloadRequestsMigration : AutoMigrationSpec
+}
+```
+
+<ParamField path="version" type="Int" default="9">
+  Current database schema version
+</ParamField>
+
+<ParamField path="exportSchema" type="Boolean" default="true">
+  Exports database schema for version control and migration testing
+</ParamField>
+
+<ParamField path="autoMigrations" type="List<AutoMigration>">
+  Automatic migrations handled by Room without manual migration code
+</ParamField>
+
+## Database Interface
+
+The `KafkaDatabase` interface provides access to all DAOs:
+
+```kotlin
+interface KafkaDatabase {
+    fun itemDetailDao(): ItemDetailDao
+    fun fileDao(): FileDao
+    fun itemDao(): ItemDao
+    fun recentSearchDao(): RecentSearchDao
+    fun recentTextDao(): RecentTextDao
+    fun recentAudioDao(): RecentAudioDao
+    fun downloadRequestsDao(): DownloadRequestsDao
+}
+```
+
+## Core Entities
+
+### File Entity
+
+Represents audio and text files from Archive.org:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/entities/File.kt
+@Entity
+data class File(
+    @PrimaryKey val fileId: String,
+    val itemId: String,
+    val itemTitle: String?,
+    val size: Long?,
+    val name: String,
+    val title: String,
+    val extension: String?,
+    val creator: String?,
+    val time: String?,
+    val format: String,
+    val playbackUrl: String?,
+    val readerUrl: String?,
+    val downloadUrl: String?,
+    val coverImage: String?,
+    val localUri: String? = null,
+) : BaseEntity {
+    companion object {
+        val audioExtensions = listOf("mp3", "wav", "m4a", "ogg", "aac", "flac", "webm")
+        val textExtensions = listOf("pdf", "epub")
+        val playableExtensions = listOf("mp3", "wav", "m4a", "ogg", "aac", "flac", "webm")
+    }
+    
+    val duration: Long
+        get() = time?.let { mapDuration(it) } ?: 0L
+}
+```
+
+<ParamField path="fileId" type="String">
+  Primary key - unique identifier for the file
+</ParamField>
+
+<ParamField path="itemId" type="String">
+  Foreign key reference to the parent item/album
+</ParamField>
+
+<ParamField path="playbackUrl" type="String?">
+  Streaming URL for audio files
+</ParamField>
+
+<ParamField path="readerUrl" type="String?">
+  Direct URL for text files (PDF/EPUB)
+</ParamField>
+
+<ParamField path="localUri" type="String?">
+  Local file URI for downloaded files
+</ParamField>
+
+### Item Entity
+
+Represents collections/albums from Archive.org:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/entities/Item.kt
+@Entity
+data class Item(
+    @PrimaryKey val itemId: String,
+    val title: String?,
+    val description: String?,
+    val creator: String?,
+    val collection: List<String>?,
+    val mediaType: String?,
+    val language: String?,
+    val coverImage: String?,
+    val files: List<File>?
+) : BaseEntity
+```
+
+### ItemDetail Entity
+
+Extended metadata for items:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/entities/ItemDetail.kt
+@Entity(tableName = "item_details")
+data class ItemDetail(
+    @PrimaryKey val itemId: String,
+    val metadata: ItemDetailMetadata?,
+    val files: List<File>?,
+    val reviews: List<Review>?
+) : BaseEntity
+```
+
+### Download Request Entity
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/entities/DownloadRequest.kt
+@Entity(tableName = "download_requests")
+data class DownloadRequest(
+    @PrimaryKey val id: String,
+    val requestId: Int,
+    val entityId: String,
+    val entityType: String
+)
+```
+
+### Recent Entities
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/entities/RecentItem.kt
+@Entity(tableName = "recent_text")
+data class RecentTextItem(
+    @PrimaryKey val fileId: String,
+    val progress: Int = 0,
+    val lastReadTime: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "recent_audio")
+data class RecentAudioItem(
+    @PrimaryKey val albumId: String,
+    val lastPlayedTime: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "recent_searches")
+data class RecentSearch(
+    @PrimaryKey val query: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+```
+
+## Data Access Objects (DAOs)
+
+### Base DAO
+
+All DAOs extend `EntityDao` which provides common CRUD operations:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/dao/EntityDao.kt
+@Dao
+interface EntityDao<T> {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: T)
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(entities: List<T>)
+    
+    @Update(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun update(entity: T)
+    
+    @Delete
+    suspend fun delete(entity: T)
+}
+```
+
+### ItemDao
+
+Handles item/collection queries:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/dao/ItemDao.kt
+@Dao
+abstract class ItemDao : EntityDao<Item> {
+    
+    @RawQuery(observedEntities = [Item::class])
+    abstract fun observeQueryItems(buildLocalQuery: RoomRawQuery): Flow<List<Item>>
+    
+    @Query("select * from item where itemId = :itemId")
+    abstract suspend fun get(itemId: String): Item
+    
+    @Query("select * from item where itemId = :itemId")
+    abstract fun observe(itemId: String): Flow<Item?>
+    
+    @Query("select * from item where itemId = :itemId")
+    abstract suspend fun getOrNull(itemId: String): Item?
+    
+    @Query("select * from item where itemId IN (:itemIds)")
+    abstract suspend fun get(itemIds: List<String>): List<Item>
+    
+    @Query("select * from item where itemId IN (:itemIds)")
+    abstract fun observe(itemIds: List<String>): Flow<List<Item>>
+    
+    @Query("delete from item")
+    abstract suspend fun deleteAll()
+    
+    @Query("SELECT EXISTS(SELECT * FROM item where itemId = :itemId)")
+    abstract suspend fun exists(itemId: String): Boolean
+}
+```
+
+<ParamField path="observeQueryItems" type="RawQuery">
+  Executes dynamic queries built at runtime with reactive Flow updates
+</ParamField>
+
+### FileDao
+
+Handles file queries with audio/text filtering:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/dao/FileDao.kt
+@Dao
+abstract class FileDao : EntityDao<File> {
+    
+    @Query("select * from file where fileId = :fileId")
+    abstract suspend fun get(fileId: String): File
+    
+    @Query("select * from file where fileId = :fileId")
+    abstract fun entry(fileId: String): Flow<File>
+    
+    @Query("select * from file where fileId = :fileId")
+    abstract suspend fun getOrNull(fileId: String): File?
+    
+    @Query("select * from file where itemId = :itemId")
+    abstract suspend fun getByItemId(itemId: String): List<File>
+    
+    @Query("select * from file where itemId = :itemId")
+    abstract fun observeByItemId(itemId: String): Flow<List<File>>
+    
+    @Query("""select * from file 
+        where itemId = :itemId 
+        and extension in ('mp3', 'wav', 'm4a', 'ogg', 'aac', 'flac', 'webm')
+        order by name""")
+    abstract suspend fun playerFilesByItemId(itemId: String): List<File>
+    
+    @Query("select * from file where fileId IN (:fileIds)")
+    abstract suspend fun getByIds(fileIds: List<String>): List<File>
+}
+```
+
+### RecentSearchDao
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/dao/RecentSearchDao.kt
+@Dao
+abstract class RecentSearchDao : EntityDao<RecentSearch> {
+    
+    @Query("select * from recent_searches order by timestamp desc limit 10")
+    abstract fun observeRecentSearches(): Flow<List<RecentSearch>>
+    
+    @Query("delete from recent_searches")
+    abstract suspend fun deleteAll()
+}
+```
+
+### DownloadRequestsDao
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/dao/DownloadRequestsDao.kt
+@Dao
+abstract class DownloadRequestsDao : EntityDao<DownloadRequest> {
+    
+    @Query("select * from download_requests where id = :id")
+    abstract fun entry(id: String): Flow<DownloadRequest>
+    
+    @Query("select * from download_requests")
+    abstract fun entries(): Flow<List<DownloadRequest>>
+    
+    @Query("select count(*) from download_requests where id = :id")
+    abstract suspend fun exists(id: String): Int
+    
+    @Query("delete from download_requests where id = :id")
+    abstract suspend fun delete(id: String)
+}
+```
+
+## Type Converters
+
+Room uses type converters for complex data types:
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/db/AppTypeConverters.kt
+object AppTypeConverters {
+    @TypeConverter
+    fun stringListToJson(value: List<String>?): String? {
+        return value?.let { Json.encodeToString(it) }
+    }
+    
+    @TypeConverter
+    fun jsonToStringList(value: String?): List<String>? {
+        return value?.let { Json.decodeFromString(it) }
+    }
+    
+    @TypeConverter
+    fun fileListToJson(value: List<File>?): String? {
+        return value?.let { Json.encodeToString(it) }
+    }
+    
+    @TypeConverter
+    fun jsonToFileList(value: String?): List<File>? {
+        return value?.let { Json.decodeFromString(it) }
+    }
+}
+```
+
+## Database Builder
+
+Platform-specific database construction:
+
+```kotlin data/database/src/main/java/com/kafka/data/db/DatabaseBuilder.kt
+fun getDatabaseBuilder(ctx: Context): RoomDatabase.Builder<KafkaRoomDatabase> {
+    val appContext = ctx.applicationContext
+    val dbFile = appContext.getDatabasePath("kafka.db")
+    return Room.databaseBuilder<KafkaRoomDatabase>(
+        context = appContext,
+        name = dbFile.absolutePath
+    )
+}
+```
+
+## Dependency Injection
+
+```kotlin data/database/src/commonMain/kotlin/com/kafka/data/injection/DatabaseModule.kt
+interface DatabaseModule {
+    @Provides
+    @ApplicationScope
+    fun provideDatabase(
+        builder: RoomDatabase.Builder<KafkaRoomDatabase>
+    ): KafkaRoomDatabase {
+        return builder
+            .setDriver(BundledSQLiteDriver())
+            .fallbackToDestructiveMigration()
+            .build()
+    }
+}
+```
+
+## Dependencies
+
+```toml gradle/libs.versions.toml
+[versions]
+room = "2.8.4"
+sqlite = "2.6.2"
+
+[libraries]
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+```
+
+## Features
+
+- **Compile-time Verification**: SQL queries verified at compile time
+- **Type Safety**: Kotlin-first API with type-safe queries
+- **Reactive Queries**: Flow-based reactive query updates
+- **Multiplatform**: Supports Android, iOS, and Desktop
+- **Auto-migrations**: Automatic schema migration handling
+- **Foreign Keys**: Supports foreign key constraints
+- **Transactions**: Built-in transaction support
+- **Threading**: Automatic background threading for queries

@@ -1,0 +1,611 @@
+---
+title: 'MVVM Pattern with Interactors'
+description: 'Deep dive into ViewModels, Interactors, and Observers in Kafka'
+---
+
+Kafka implements the MVVM (Model-View-ViewModel) pattern with an additional **Interactor layer** for business logic. This architecture is inspired by [Tivi](https://github.com/chrisbanes/tivi) and provides clear separation between UI, business logic, and data layers.
+
+## MVVM + Interactors Pattern
+
+### Architecture Layers
+
+```
+View (Composable)
+      ↕️ (StateFlow)
+ViewModel
+      ↕️ (invoke/Flow)
+Interactors/Observers
+      ↕️ (Flow)
+Repository
+      ↕️ (Flow)
+Data Source (Room/API)
+```
+
+<Info>**Key Difference**: Instead of ViewModels directly calling repositories, they use **Interactors** (for write operations) and **Observers** (for read operations) to encapsulate business logic.</Info>
+
+## ViewModels
+
+ViewModels manage UI state and handle user actions. They are injected using kotlin-inject and expose state via `StateFlow`.
+
+### Typical ViewModel Structure
+
+<CodeGroup>
+```kotlin HomepageViewModel
+class HomepageViewModel @Inject constructor(
+    observeHomepage: ObserveHomepage,              // Observer for data
+    observeUser: ObserveUser,
+    private val updateHomepage: UpdateHomepage,    // Interactor for updates
+    private val removeRecentItem: RemoveRecentItem,
+    private val navigator: Navigator,
+    private val analytics: Analytics,
+    private val loadingCounter: ObservableLoadingCounter
+) : ViewModel() {
+    private val uiMessageManager = UiMessageManager()
+
+    // Combine multiple flows into single UI state
+    val state: StateFlow<HomepageViewState> = combine(
+        observeHomepage.flow,
+        observeUser.flow,
+        loadingCounter.observable,
+        uiMessageManager.message,
+        ::HomepageViewState
+    ).stateInDefault(scope = viewModelScope, initialValue = HomepageViewState())
+
+    init {
+        // Start observing data
+        observeHomepage(Unit)
+        observeUser(ObserveUser.Params())
+        
+        // Trigger initial data load
+        updateItems()
+    }
+
+    private fun updateItems() {
+        viewModelScope.launch {
+            updateHomepage(Unit).collectStatus(loadingCounter, uiMessageManager)
+        }
+    }
+
+    fun openItemDetail(itemId: String, collection: String?) {
+        analytics.log { openItemDetail(itemId, collection) }
+        navigator.navigate(Screen.ItemDetail(itemId))
+    }
+    
+    fun removeRecentItem(fileId: String) {
+        viewModelScope.launch {
+            removeRecentItem.invoke(fileId).collect()
+        }
+    }
+}
+```
+
+```kotlin ViewState
+data class HomepageViewState(
+    val homepage: Homepage = Homepage(),
+    val user: User? = null,
+    val isLoading: Boolean = false,
+    val appShareIndex: Int = 6,
+    val message: UiMessage? = null,
+) {
+    val isFullScreenLoading = isLoading && homepage.collection.isEmpty()
+    val isFullScreenError = message != null && homepage.collection.isEmpty()
+}
+```
+
+```kotlin Usage in Compose
+@Composable
+fun Homepage(viewModelFactory: () -> HomepageViewModel) {
+    val viewModel = viewModel { viewModelFactory() }
+    val viewState by viewModel.state.collectAsStateWithLifecycle()
+
+    Scaffold(
+        topBar = { HomeTopBar(openProfile = viewModel::openProfile) }
+    ) { padding ->
+        HomepageFeedItems(
+            homepage = viewState.homepage,
+            openItemDetail = viewModel::openItemDetail,
+            removeRecentItem = viewModel::removeRecentItem
+        )
+    }
+}
+```
+</CodeGroup>
+
+### ViewModel Characteristics
+
+<CardGroup cols={2}>
+  <Card title="State Management" icon="database">
+    - Single `StateFlow<ViewState>` for UI state
+    - Combine multiple flows using `combine()`
+    - Immutable state classes
+  </Card>
+  
+  <Card title="User Actions" icon="hand-pointer">
+    - Public functions for user interactions
+    - Launch coroutines in `viewModelScope`
+    - Analytics logging for user events
+  </Card>
+  
+  <Card title="Navigation" icon="route">
+    - Injected `Navigator` for screen navigation
+    - Deep linking support
+    - Type-safe navigation arguments
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation">
+    - `UiMessageManager` for error messages
+    - `ObservableLoadingCounter` for loading states
+    - Retry mechanisms
+  </Card>
+</CardGroup>
+
+## Interactors (Write Operations)
+
+Interactors encapsulate single use cases and return `Flow<InvokeStatus>` to indicate operation status.
+
+### Base Interactor Class
+
+<CodeGroup>
+```kotlin Interactor Base
+abstract class Interactor<in P> {
+    suspend operator fun invoke(
+        params: P, 
+        timeoutMs: Long = defaultTimeoutMs
+    ): Flow<InvokeStatus> {
+        return flow {
+            try {
+                withTimeout(timeoutMs) {
+                    emit(InvokeStarted)
+                    doWork(params)              // Execute business logic
+                    emit(InvokeSuccess)
+                }
+            } catch (t: TimeoutCancellationException) {
+                emit(InvokeError(t))
+            }
+        }.catch { t ->
+            emit(InvokeError(t))
+        }
+    }
+
+    suspend fun execute(params: P) = doWork(params)
+
+    protected abstract suspend fun doWork(params: P)
+
+    companion object {
+        private val defaultTimeoutMs = 10.minutes.inWholeMilliseconds
+    }
+}
+```
+
+```kotlin InvokeStatus
+sealed class InvokeStatus
+object InvokeStarted : InvokeStatus()
+object InvokeSuccess : InvokeStatus()
+data class InvokeError(val throwable: Throwable) : InvokeStatus()
+```
+</CodeGroup>
+
+### Example Interactor Implementation
+
+<CodeGroup>
+```kotlin UpdateHomepage
+class UpdateHomepage @Inject constructor(
+    private val dispatchers: CoroutineDispatchers,
+    private val homepageRepository: HomepageRepository,
+    private val itemRepository: ItemRepository,
+    private val buildRemoteQuery: BuildRemoteQuery,
+) : Interactor<Unit>() {
+
+    override suspend fun doWork(params: Unit) {
+        withContext(dispatchers.io) {
+            // Get IDs from homepage collection
+            val unFetchedIds = homepageRepository.getHomepageIds()
+                .map { ids -> ids.filter { !itemRepository.exists(it) } }
+
+            // Fetch items from API
+            unFetchedIds.forEach { ids ->
+                if (ids.isNotEmpty()) {
+                    val query = ArchiveQuery().booksByIdentifiers(ids)
+                    val items = itemRepository.updateQuery(buildRemoteQuery(query))
+                    itemRepository.saveItems(items.filterNot { it.isInappropriate })
+                }
+            }
+        }
+    }
+}
+```
+
+```kotlin RemoveRecentItem
+class RemoveRecentItem @Inject constructor(
+    private val recentsDao: RecentsDao,
+    private val dispatchers: CoroutineDispatchers,
+) : Interactor<String>() {
+
+    override suspend fun doWork(params: String) {
+        withContext(dispatchers.io) {
+            recentsDao.deleteById(params)
+        }
+    }
+}
+```
+
+```kotlin UpdateFavorite
+class UpdateFavorite @Inject constructor(
+    private val favoritesRepository: FavoritesRepository,
+    private val dispatchers: CoroutineDispatchers,
+) : Interactor<UpdateFavorite.Params>() {
+
+    override suspend fun doWork(params: Params) {
+        withContext(dispatchers.io) {
+            if (params.isFavorite) {
+                favoritesRepository.addFavorite(params.itemId)
+            } else {
+                favoritesRepository.removeFavorite(params.itemId)
+            }
+        }
+    }
+
+    data class Params(val itemId: String, val isFavorite: Boolean)
+}
+```
+</CodeGroup>
+
+### Using Interactors in ViewModels
+
+<CodeGroup>
+```kotlin Collect Status
+viewModelScope.launch {
+    updateHomepage(Unit)
+        .collectStatus(loadingCounter, uiMessageManager)
+}
+
+// collectStatus is an extension function that:
+// - Updates loading counter on InvokeStarted
+// - Clears loading on InvokeSuccess
+// - Shows error message on InvokeError
+```
+
+```kotlin Simple Collect
+viewModelScope.launch {
+    removeRecentItem(fileId).collect()  // Just execute, ignore status
+}
+```
+
+```kotlin Direct Execution
+viewModelScope.launch {
+    updateFavorite.execute(Params(itemId, true))  // No status flow
+}
+```
+</CodeGroup>
+
+## Observers (Read Operations)
+
+Observers provide reactive streams of data using `SubjectInteractor`.
+
+### Base SubjectInteractor Class
+
+<CodeGroup>
+```kotlin SubjectInteractor
+abstract class SubjectInteractor<P, T> {
+    private val paramState = MutableSharedFlow<P>(
+        replay = 1,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    operator fun invoke(params: P): Flow<T> {
+        paramState.tryEmit(params)
+        return flow
+    }
+
+    fun execute(params: P): Flow<T> = createObservable(params)
+
+    abstract fun createObservable(params: P): Flow<T>
+
+    val flow: Flow<T> = paramState
+        .distinctUntilChanged()
+        .flatMapLatest { createObservable(it) }
+        .distinctUntilChanged()
+
+    suspend fun get(): T = flow.first()
+    suspend fun getOrNull(): T? = flow.firstOrNull()
+}
+```
+
+```kotlin Unit Parameter Extension
+operator fun <T> SubjectInteractor<Unit, T>.invoke() = invoke(Unit)
+```
+</CodeGroup>
+
+### Example Observer Implementations
+
+<CodeGroup>
+```kotlin ObserveHomepage
+class ObserveHomepage @Inject constructor(
+    private val coroutineDispatchers: CoroutineDispatchers,
+    private val homepageRepository: HomepageRepository,
+) : SubjectInteractor<Unit, Homepage>() {
+
+    override fun createObservable(params: Unit): Flow<Homepage> {
+        return homepageRepository.observeHomepageCollection()
+            .map { Homepage(collection = it) }
+            .flowOn(coroutineDispatchers.io)
+    }
+}
+```
+
+```kotlin ObserveItemDetail
+class ObserveItemDetail @Inject constructor(
+    private val itemRepository: ItemRepository,
+    private val dispatchers: CoroutineDispatchers,
+) : SubjectInteractor<ObserveItemDetail.Params, ItemDetail>() {
+
+    override fun createObservable(params: Params): Flow<ItemDetail> {
+        return itemRepository.observeItemDetail(params.itemId)
+            .flowOn(dispatchers.io)
+    }
+
+    data class Params(val itemId: String)
+}
+```
+
+```kotlin ObserveFavorites
+class ObserveFavorites @Inject constructor(
+    private val favoritesRepository: FavoritesRepository,
+    private val dispatchers: CoroutineDispatchers,
+) : SubjectInteractor<ObserveFavorites.Params, List<Item>>() {
+
+    override fun createObservable(params: Params): Flow<List<Item>> {
+        return favoritesRepository.observeFavorites(params.limit)
+            .flowOn(dispatchers.io)
+    }
+
+    data class Params(val limit: Int = 100)
+}
+```
+</CodeGroup>
+
+### Using Observers in ViewModels
+
+<CodeGroup>
+```kotlin Start Observing
+init {
+    // Start observing - params emitted to paramState
+    observeHomepage(Unit)
+    observeUser(ObserveUser.Params())
+}
+
+// The observer's .flow automatically reacts to parameter changes
+```
+
+```kotlin Combine Multiple Observers
+val state: StateFlow<ViewState> = combine(
+    observeHomepage.flow,
+    observeUser.flow,
+    observeFavorites.flow,
+    loadingCounter.observable,
+    ::ViewState
+).stateInDefault(viewModelScope, ViewState())
+```
+
+```kotlin Direct Flow Access
+val items: Flow<List<Item>> = observeQueryItems.execute(
+    ObserveQueryItems.Params(query = "kafka")
+)
+```
+</CodeGroup>
+
+## ResultInteractor
+
+For operations that return a result directly without status flow.
+
+<CodeGroup>
+```kotlin Base Class
+abstract class ResultInteractor<in P, R> {
+    private val count = atomic(0)
+    private val loadingState = MutableStateFlow(count.value)
+
+    val inProgress: Flow<Boolean> = loadingState.map { it > 0 }
+
+    suspend operator fun invoke(
+        params: P,
+        timeout: Duration = DefaultTimeout,
+    ): Result<R> = try {
+        addLoader()
+        runCatching {
+            withTimeout(timeout) {
+                doWork(params)
+            }
+        }
+    } finally {
+        removeLoader()
+    }
+
+    protected abstract suspend fun doWork(params: P): R
+}
+```
+
+```kotlin Example Usage
+class SignInUser @Inject constructor(
+    private val accountRepository: AccountRepository
+) : ResultInteractor<SignInUser.Params, User>() {
+
+    override suspend fun doWork(params: Params): User {
+        return accountRepository.signIn(params.email, params.password)
+    }
+
+    data class Params(val email: String, val password: String)
+}
+
+// In ViewModel:
+viewModelScope.launch {
+    signInUser(Params(email, password))
+        .onSuccess { user -> /* Handle success */ }
+        .onFailure { error -> /* Handle error */ }
+}
+```
+</CodeGroup>
+
+## Benefits of This Pattern
+
+<CardGroup cols={2}>
+  <Card title="Testability" icon="flask">
+    - ViewModels can be tested by mocking interactors
+    - Interactors can be tested independently
+    - Clear boundaries for unit tests
+  </Card>
+  
+  <Card title="Reusability" icon="recycle">
+    - Interactors can be shared across ViewModels
+    - Common business logic in one place
+    - Consistent error handling
+  </Card>
+  
+  <Card title="Separation of Concerns" icon="layer-group">
+    - ViewModels focus on UI state
+    - Interactors handle business logic
+    - Repositories manage data
+  </Card>
+  
+  <Card title="Type Safety" icon="shield-check">
+    - Strong typing with generic parameters
+    - Compile-time checks
+    - Clear data flow
+  </Card>
+</CardGroup>
+
+## State Management Patterns
+
+### Combining Multiple Flows
+
+<CodeGroup>
+```kotlin Multiple Data Sources
+val state: StateFlow<ViewState> = combine(
+    observeHomepage.flow,          // Flow<Homepage>
+    observeUser.flow,               // Flow<User?>
+    loadingCounter.observable,      // Flow<Boolean>
+    uiMessageManager.message,       // Flow<UiMessage?>
+) { homepage, user, isLoading, message ->
+    ViewState(
+        homepage = homepage,
+        user = user,
+        isLoading = isLoading,
+        message = message
+    )
+}.stateInDefault(viewModelScope, ViewState())
+```
+
+```kotlin Derived State
+data class ViewState(
+    val homepage: Homepage = Homepage(),
+    val user: User? = null,
+    val isLoading: Boolean = false,
+    val message: UiMessage? = null,
+) {
+    // Computed properties
+    val isFullScreenLoading = isLoading && homepage.collection.isEmpty()
+    val isFullScreenError = message != null && homepage.collection.isEmpty()
+    val hasData = homepage.collection.isNotEmpty()
+}
+```
+</CodeGroup>
+
+### Loading and Error Handling
+
+<CodeGroup>
+```kotlin ObservableLoadingCounter
+class ObservableLoadingCounter {
+    private val count = AtomicInteger()
+    private val loadingState = MutableStateFlow(count.get())
+
+    val observable: Flow<Boolean> = 
+        loadingState.map { it > 0 }.distinctUntilChanged()
+
+    fun addLoader() = loadingState.value = count.incrementAndGet()
+    fun removeLoader() = loadingState.value = count.decrementAndGet()
+}
+```
+
+```kotlin UiMessageManager
+class UiMessageManager {
+    private val _messages = MutableStateFlow<UiMessage?>(null)
+    val message: Flow<UiMessage?> = _messages.asStateFlow()
+
+    fun emitMessage(message: UiMessage) {
+        _messages.value = message
+    }
+
+    fun clearMessage() {
+        _messages.value = null
+    }
+}
+
+data class UiMessage(
+    val message: String,
+    val actionLabel: String? = null
+)
+```
+
+```kotlin collectStatus Extension
+fun Flow<InvokeStatus>.collectStatus(
+    loadingCounter: ObservableLoadingCounter,
+    uiMessageManager: UiMessageManager
+) = collect { status ->
+    when (status) {
+        InvokeStarted -> loadingCounter.addLoader()
+        InvokeSuccess -> loadingCounter.removeLoader()
+        is InvokeError -> {
+            loadingCounter.removeLoader()
+            uiMessageManager.emitMessage(
+                UiMessage(status.throwable.message ?: "Error")
+            )
+        }
+    }
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<Warning>
+**Don't**: Access repositories directly from ViewModels
+
+```kotlin
+// ❌ Bad
+class MyViewModel(private val repository: MyRepository) {
+    fun loadData() {
+        viewModelScope.launch {
+            repository.fetchData()  // Direct repository access
+        }
+    }
+}
+```
+</Warning>
+
+<Check>
+**Do**: Use Interactors/Observers to access data
+
+```kotlin
+// ✅ Good
+class MyViewModel(
+    private val updateData: UpdateData,
+    observeData: ObserveData
+) {
+    val state = observeData.flow.stateIn(viewModelScope)
+    
+    fun loadData() {
+        viewModelScope.launch {
+            updateData(Unit).collectStatus(loadingCounter, messageManager)
+        }
+    }
+}
+```
+</Check>
+
+<Tip>
+- Use **Observers** for read operations that return `Flow<T>`
+- Use **Interactors** for write operations that return `Flow<InvokeStatus>`
+- Use **ResultInteractors** when you need `Result<T>` return type
+- Keep ViewModels focused on UI state and user actions
+- Move all business logic to Interactors
+</Tip>

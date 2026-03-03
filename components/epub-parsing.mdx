@@ -1,0 +1,376 @@
+---
+title: EPUB Parsing
+description: EPUB parsing and rendering implementation for reading electronic books from Archive.org
+---
+
+Kafka includes a comprehensive EPUB parser built from scratch that handles the complete EPUB specification. The parser extracts book metadata, chapters, and images from EPUB archives and renders them as readable text.
+
+## Architecture Overview
+
+The EPUB parsing system consists of several key components:
+
+- **EpubParser**: Main parser that extracts EPUB structure
+- **EpubXMLFileParser**: Parses individual XHTML chapter files
+- **BookTextMapper**: Converts parsed content to readable text
+- **EpubReader**: Compose UI component for displaying books
+
+## EpubParser
+
+The `EpubParser` class is the entry point for parsing EPUB files:
+
+```kotlin ui/reader/epub/src/commonMain/kotlin/com/kafka/reader/epub/parser/EpubParser.kt
+class EpubParser @Inject constructor() {
+    
+    /**
+     * Creates an [EpubBook] object from an EPUB file.
+     */
+    suspend fun createEpubBook(
+        inputStream: InputStream, 
+        shouldUseToc: Boolean = true
+    ): EpubBook {
+        return parseAndCreateEbook(inputStream, shouldUseToc)
+    }
+    
+    suspend fun createEpubBook(
+        filePath: String, 
+        shouldUseToc: Boolean = true
+    ): EpubBook {
+        val inputStream = withContext(Dispatchers.IO) { 
+            FileInputStream(filePath) 
+        }
+        inputStream.use { return parseAndCreateEbook(it, shouldUseToc) }
+    }
+}
+```
+
+<ParamField path="shouldUseToc" type="Boolean" default="true">
+  Whether to use the table of contents (toc.ncx) file for parsing chapters. If false or if TOC is unreliable, falls back to spine-based parsing.
+</ParamField>
+
+## EpubBook Model
+
+The parsed EPUB file is represented as an `EpubBook` object:
+
+```kotlin ui/reader/epub/src/commonMain/kotlin/com/kafka/reader/epub/models/EpubBook.kt
+data class EpubBook(
+    val fileName: String,
+    val title: String,
+    val author: String,
+    val language: String,
+    val coverImage: Bitmap?,
+    val chapters: List<EpubChapter>,
+    val images: List<EpubImage>
+)
+
+data class EpubChapter(
+    val absPath: String,
+    val title: String,
+    val body: String
+)
+
+data class EpubImage(
+    val absPath: String,
+    val image: ByteArray
+)
+```
+
+## Parsing Process
+
+The parser follows the EPUB specification and handles the complete parsing workflow:
+
+### 1. Extract ZIP Contents
+
+```kotlin ui/reader/epub/src/commonMain/kotlin/com/kafka/reader/epub/parser/EpubParser.kt
+private suspend fun getZipFiles(
+    inputStream: InputStream
+): Map<String, EpubFile> = withContext(Dispatchers.IO) {
+    ZipInputStream(inputStream).let { zipInputStream ->
+        zipInputStream.entries()
+            .filterNot { it.isDirectory }
+            .map { 
+                EpubFile(
+                    absPath = it.name, 
+                    data = zipInputStream.readBytes()
+                ) 
+            }
+            .associateBy { it.absPath }
+    }
+}
+```
+
+### 2. Parse OPF Document
+
+The OPF (Open Packaging Format) file contains the book's structure:
+
+```kotlin
+private fun createEpubDocument(files: Map<String, EpubFile>): EpubDocument {
+    // Find container.xml
+    val container = files["META-INF/container.xml"]
+        ?: throw EpubParserException("META-INF/container.xml file missing")
+    
+    // Extract OPF file path
+    val opfFilePath = parseXMLFile(container.data)
+        ?.selectFirstTag("rootfile")
+        ?.getAttributeValue("full-path")
+        ?.decodedURL
+        ?: throw EpubParserException("Invalid container.xml file")
+    
+    // Parse OPF file
+    val opfFile = files[opfFilePath] 
+        ?: throw EpubParserException(".opf file missing")
+    
+    val document = parseXMLFile(opfFile.data)
+    val metadata = document.selectFirstTag("metadata")
+    val manifest = document.selectFirstTag("manifest")
+    val spine = document.selectFirstTag("spine")
+    
+    return EpubDocument(metadata, manifest, spine, opfFilePath)
+}
+```
+
+### 3. Extract Metadata
+
+```kotlin
+val metadataTitle = document.metadata
+    .selectFirstChildTag("dc:title")
+    ?.textContent ?: "Unknown Title"
+    
+val metadataAuthor = document.metadata
+    .selectFirstChildTag("dc:creator")
+    ?.textContent ?: "Unknown Author"
+    
+val metadataLanguage = document.metadata
+    .selectFirstChildTag("dc:language")
+    ?.textContent ?: "en"
+```
+
+### 4. Parse Chapters
+
+Kafka supports two chapter parsing methods:
+
+#### Table of Contents (TOC) Based
+
+```kotlin
+private fun parseUsingTocFile(
+    tocNavPoints: List<Element>,
+    files: Map<String, EpubFile>,
+    hrefRootPath: File,
+    document: EpubDocument,
+    manifestItems: Map<String, EpubManifestItem>
+): List<EpubChapter> {
+    val chapters = tocNavPoints.flatMapIndexed { index, navPoint ->
+        val title = navPoint
+            .selectFirstChildTag("navLabel")
+            ?.selectFirstChildTag("text")
+            ?.textContent
+            
+        val chapterSrc = navPoint
+            .selectFirstChildTag("content")
+            ?.getAttributeValue("src")
+            ?.decodedURL
+            ?.hrefAbsolutePath(hrefRootPath)
+        
+        // Parse chapter content
+        val chapterFile = files[chapterSrc]
+        val parser = chapterFile?.let {
+            EpubXMLFileParser(
+                fileAbsolutePath = it.absPath,
+                data = it.data,
+                zipFile = files,
+                fragmentId = fragmentId,
+                nextFragmentId = nextFragmentId
+            )
+        }
+        
+        val res = parser?.parseAsDocument()
+        // ...
+    }
+    
+    return chapters
+}
+```
+
+#### Spine-Based (Fallback)
+
+```kotlin
+private fun parseUsingSpine(
+    spine: Node,
+    manifestItems: Map<String, EpubManifestItem>,
+    files: Map<String, EpubFile>,
+): List<EpubChapter> {
+    var chapterIndex = 0
+    val chapterExtensions = listOf("xhtml", "xml", "html", "htm")
+    
+    return spine.selectChildTag("itemref")
+        .mapNotNull { manifestItems[it.getAttribute("idref")] }
+        .filter { item ->
+            chapterExtensions.any {
+                item.absPath.endsWith(it, ignoreCase = true)
+            }
+        }
+        .mapNotNull { files[it.absPath]?.let { file -> it to file } }
+        .map { (item, file) ->
+            val parser = EpubXMLFileParser(file.absPath, file.data, files)
+            val res = parser.parseAsDocument()
+            
+            TempEpubChapter(
+                url = file.absPath,
+                title = res.title,
+                body = res.body,
+                chapterIndex = chapterIndex
+            )
+        }
+        .groupBy { it.chapterIndex }
+        .map { (index, list) ->
+            EpubChapter(
+                absPath = list.first().url,
+                title = list.first().title ?: "Chapter $index",
+                body = list.joinToString("\n\n") { it.body }
+            )
+        }
+}
+```
+
+## EpubXMLFileParser
+
+The `EpubXMLFileParser` handles individual XHTML chapter files:
+
+```kotlin ui/reader/epub/src/commonMain/kotlin/com/kafka/reader/epub/parser/EpubXMLFileParser.kt
+class EpubXMLFileParser(
+    val fileAbsolutePath: String,
+    val data: ByteArray,
+    private val zipFile: Map<String, EpubParser.EpubFile>,
+    private val fragmentId: String? = null,
+    private val nextFragmentId: String? = null
+) {
+    data class Output(val title: String?, val body: String)
+    
+    fun parseAsDocument(): Output {
+        val document = Jsoup.parse(data.inputStream(), "UTF-8", "")
+        
+        val title: String
+        val bodyContent: String
+        
+        if (fragmentId != null) {
+            // Parse specific fragment
+            val bodyElement = document.selectFirst("div#$fragmentId")
+            title = document.selectFirst("h1, h2, h3, h4, h5, h6")?.text() ?: ""
+            bodyContent = getNodeStructuredText(bodyElement)
+        } else {
+            // Parse entire body
+            val bodyElement = document.body()
+            title = document.selectFirst("h1, h2, h3, h4, h5, h6")?.text() ?: ""
+            bodyContent = getNodeStructuredText(bodyElement)
+        }
+        
+        return Output(title = title, body = bodyContent)
+    }
+}
+```
+
+<ParamField path="fragmentId" type="String?">
+  Optional ID of a specific fragment/section to extract from the chapter
+</ParamField>
+
+<ParamField path="nextFragmentId" type="String?">
+  Optional ID of the next fragment, used to determine where to stop parsing
+</ParamField>
+
+## Text Extraction
+
+The parser extracts clean, structured text from HTML:
+
+```kotlin
+private fun getNodeStructuredText(node: Node, singleNode: Boolean = false): String {
+    val nodeActions = mapOf(
+        "p" to { n: Node -> getPTraverse(n) },
+        "br" to { "\n" },
+        "hr" to { "\n\n" },
+        "img" to ::declareImgEntry,
+        "image" to ::declareImgEntry
+    )
+    
+    val children = if (singleNode) listOf(node) else node.childNodes()
+    return children.joinToString("") { child ->
+        nodeActions[child.nodeName()]?.invoke(child) ?: action(child)
+    }
+}
+```
+
+## Image Handling
+
+```kotlin
+private fun parseImages(
+    manifestItems: Map<String, EpubManifestItem>, 
+    files: Map<String, EpubFile>
+): List<EpubImage> {
+    val imageExtensions = listOf(
+        "png", "gif", "raw", "jpg", "jpeg", "webp", "svg"
+    )
+    
+    val listedImages = manifestItems.asSequence()
+        .map { it.value }
+        .filter { it.mediaType.startsWith("image") }
+        .mapNotNull { files[it.absPath] }
+        .map { EpubImage(absPath = it.absPath, image = it.data) }
+    
+    return listedImages.distinctBy { it.absPath }.toList()
+}
+```
+
+## Error Handling
+
+The parser includes comprehensive error handling:
+
+```kotlin ui/reader/epub/src/commonMain/kotlin/com/kafka/reader/epub/parser/EpubParserException.kt
+class EpubParserException(message: String) : Exception(message)
+```
+
+Common exceptions:
+- **Missing container.xml**: Invalid EPUB structure
+- **Missing OPF file**: Corrupt EPUB archive
+- **Invalid TOC**: Falls back to spine-based parsing
+- **Empty chapters**: Automatically filtered out
+
+## Reliability Features
+
+### TOC Validation
+
+The parser validates TOC reliability:
+
+```kotlin
+// If 25% or more chapters have empty bodies, switch to spine-based parsing
+val emptyChapterThreshold = 0.25
+val totalChapters = tocNavPoints.size
+val emptyChapters = totalChapters - chapters.size
+
+if (emptyChapters.toDouble() / totalChapters >= emptyChapterThreshold) {
+    debug { "More than 60% of chapters have empty bodies. Switching to spine-based parsing." }
+    return parseUsingSpine(document.spine, manifestItems, files)
+}
+```
+
+## Dependencies
+
+- **JSoup**: HTML and XML parsing
+- **Kotlin Coroutines**: Asynchronous file processing
+- **Java ZIP**: EPUB archive extraction
+
+## Usage Example
+
+```kotlin
+val epubParser = EpubParser()
+val epubBook = epubParser.createEpubBook(
+    filePath = "/path/to/book.epub",
+    shouldUseToc = true
+)
+
+println("Title: ${epubBook.title}")
+println("Author: ${epubBook.author}")
+println("Chapters: ${epubBook.chapters.size}")
+
+epubBook.chapters.forEach { chapter ->
+    println("Chapter: ${chapter.title}")
+    println(chapter.body)
+}
+```

@@ -1,0 +1,515 @@
+---
+title: 'Module Structure'
+description: 'Understanding Kafka modular architecture and organization'
+---
+
+Kafka uses a highly modular architecture with feature-based modules and shared core modules. This organization provides clear separation of concerns, faster build times, and better code reusability across platforms.
+
+## Module Overview
+
+The project consists of **30+ modules** organized into several categories:
+
+```
+kafka/
+├── app/                    # Main Android application
+├── desktop-app/            # Desktop application (KMP)
+├── base/                   # Foundation modules
+│   ├── annotations/
+│   └── domain/            # Core domain patterns
+├── core/                   # Core functionality
+│   ├── analytics/
+│   ├── downloader/
+│   ├── image-loading/
+│   ├── networking/
+│   ├── play/
+│   └── remote-config/
+├── data/                   # Data layer modules
+│   ├── database/
+│   ├── models/
+│   ├── platform/
+│   ├── prefs/
+│   └── repo/
+├── domain/                 # Business logic
+├── navigation/             # Navigation logic
+└── ui/                     # Feature UI modules
+    ├── auth/
+    ├── common/
+    ├── components/
+    ├── downloader/
+    ├── homepage/
+    ├── item/detail/
+    ├── library/
+    ├── profile/
+    ├── reader/{epub,online,pdf}/
+    ├── search/
+    ├── shared/
+    ├── summary/
+    ├── theme/
+    └── webview/
+```
+
+## Module Categories
+
+### Base Modules
+
+Foundation modules that define core patterns and annotations.
+
+<CodeGroup>
+```gradle base:domain
+include ':base:domain' // kmp
+```
+</CodeGroup>
+
+**Purpose**: Defines base classes for the architecture:
+- `Interactor<P>`: Base class for use cases
+- `SubjectInteractor<P, T>`: Base class for observable use cases
+- `ResultInteractor<P, R>`: Base class for result-based operations
+- `CoroutineDispatchers`: Abstraction for coroutine dispatchers
+
+<CodeGroup>
+```kotlin Interactor Base Class
+// base/domain/src/commonMain/kotlin/com/kafka/base/domain/Interactor.kt
+abstract class Interactor<in P> {
+    suspend operator fun invoke(params: P, timeoutMs: Long = defaultTimeoutMs): Flow<InvokeStatus> {
+        return flow {
+            try {
+                withTimeout(timeoutMs) {
+                    emit(InvokeStarted)
+                    doWork(params)
+                    emit(InvokeSuccess)
+                }
+            } catch (t: TimeoutCancellationException) {
+                emit(InvokeError(t))
+            }
+        }.catch { t ->
+            emit(InvokeError(t))
+        }
+    }
+
+    protected abstract suspend fun doWork(params: P)
+}
+```
+
+```kotlin SubjectInteractor Base Class
+abstract class SubjectInteractor<P, T> {
+    private val paramState = MutableSharedFlow<P>(
+        replay = 1,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    operator fun invoke(params: P): Flow<T> {
+        paramState.tryEmit(params)
+        return flow
+    }
+
+    abstract fun createObservable(params: P): Flow<T>
+
+    val flow: Flow<T> = paramState
+        .distinctUntilChanged()
+        .flatMapLatest { createObservable(it) }
+        .distinctUntilChanged()
+}
+```
+
+```kotlin CoroutineDispatchers
+data class CoroutineDispatchers(
+    val io: CoroutineDispatcher,
+    val computation: CoroutineDispatcher,
+    val main: CoroutineDispatcher,
+)
+```
+</CodeGroup>
+
+### Core Modules
+
+Shared functionality used across features.
+
+<Accordion title="core:analytics">
+  Analytics and logging functionality
+  - Firebase Analytics integration
+  - Event logging abstraction
+  - Crashlytics reporting
+</Accordion>
+
+<Accordion title="core:downloader">
+  Download management
+  - File downloading with progress
+  - Download queue management
+  - Based on [DatMusic](https://github.com/alashow/datmusic-android)
+</Accordion>
+
+<Accordion title="core:image-loading">
+  Image loading utilities
+  - Coil integration
+  - Image caching strategies
+  - Cover art loading
+</Accordion>
+
+<Accordion title="core:networking">
+  Network layer setup
+  - Ktor client configuration
+  - API interceptors
+  - Network error handling
+</Accordion>
+
+<Accordion title="core:play">
+  Playback functionality
+  - Audio player integration
+  - Uses Sarahang library
+  - Playback controls
+</Accordion>
+
+<Accordion title="core:remote-config">
+  Remote configuration
+  - Firebase Remote Config
+  - Feature flags
+  - A/B testing support
+</Accordion>
+
+### Data Layer Modules
+
+Modules responsible for data management and persistence.
+
+#### data:database
+
+Room database implementation with entities and DAOs.
+
+<CodeGroup>
+```kotlin Database
+@Database(
+    entities = [
+        ItemDetail::class,
+        File::class,
+        Item::class,
+        QueueEntity::class,
+        RecentSearch::class,
+        RecentTextItem::class,
+        RecentAudioItem::class,
+        DownloadRequest::class,
+    ],
+    version = 9,
+    exportSchema = true
+)
+@TypeConverters(AppTypeConverters::class)
+abstract class KafkaRoomDatabase : RoomDatabase(), KafkaDatabase {
+    // Auto-generated DAO getters
+}
+```
+
+```kotlin Entity Example
+@Entity
+data class Item(
+    @PrimaryKey val itemId: String = "",
+    @Embedded(prefix = "creator_") val creator: Creator? = null,
+    val language: List<String>? = null,
+    val title: String? = null,
+    val description: String? = null,
+    val mediaType: String? = null,
+    val coverImage: String? = null,
+    val collection: List<String>? = null,
+    val subject: String? = null,
+    val rating: Double? = null,
+) : BaseEntity
+```
+
+```kotlin DAO Example
+@Dao
+abstract class ItemDao : EntityDao<Item> {
+    @Query("select * from item where itemId = :itemId")
+    abstract suspend fun get(itemId: String): Item
+
+    @Query("select * from item where itemId = :itemId")
+    abstract fun observe(itemId: String): Flow<Item?>
+
+    @Query("select * from item where itemId IN (:itemIds)")
+    abstract fun observe(itemIds: List<String>): Flow<List<Item>>
+}
+```
+</CodeGroup>
+
+#### data:models
+
+Data transfer objects and API models.
+
+- Network response models
+- Serialization with kotlinx.serialization
+- Archive.org API models
+- Search filters and queries
+
+#### data:repo
+
+Repository implementations.
+
+<CodeGroup>
+```kotlin Repository Example
+@ApplicationScope
+class HomepageRepository @Inject constructor(
+    private val firestoreGraph: FirestoreGraph,
+    private val homepageMapper: HomepageMapper,
+    private val userDataRepository: UserDataRepository
+) {
+    fun observeHomepageCollection() =
+        firestoreGraph.homepageCollection.snapshots
+            .flatMapLatest { it.toHomepage(userDataRepository.getUserCountry()) }
+
+    suspend fun getHomepageIds() = 
+        firestoreGraph.homepageCollection.get()
+            .documents
+            .map { it.getHomepageData() }
+            .filter { it.enabled }
+            .sortedBy { it.index }
+}
+```
+
+```kotlin Repositories List
+// Key repositories in data:repo
+- AccountRepository
+- DownloadsRepository
+- FavoritesRepository
+- HomepageRepository
+- ItemRepository
+- RecentItemRepository
+- RecommendationRepository
+- SummaryRepository
+```
+</CodeGroup>
+
+#### data:prefs
+
+DataStore-based preferences management.
+
+- User preferences
+- App settings
+- Reading state persistence
+
+#### data:platform
+
+Platform-specific data utilities.
+
+- User country detection
+- App version information
+- Platform-specific storage paths
+
+### Domain Module
+
+Business logic layer with interactors and observers.
+
+<CodeGroup>
+```kotlin Interactors (Write Operations)
+domain/src/commonMain/kotlin/com/kafka/domain/interactors/
+├── UpdateHomepage.kt
+├── UpdateItemDetail.kt
+├── UpdateFavorite.kt
+├── UpdateRecentItem.kt
+├── SearchQueryItems.kt
+├── AddRecentSearch.kt
+├── account/
+│   ├── SignInUser.kt
+│   ├── SignUpUser.kt
+│   └── LogoutUser.kt
+└── recent/
+    ├── AddRecentItem.kt
+    ├── RemoveRecentItem.kt
+    └── RemoveAllRecentItems.kt
+```
+
+```kotlin Observers (Read Operations)
+domain/src/commonMain/kotlin/com/kafka/domain/observers/
+├── ObserveHomepage.kt
+├── ObserveItemDetail.kt
+├── ObserveQueryItems.kt
+├── ObserveRecentItems.kt
+├── ObserveRecentSearch.kt
+├── ObserveUser.kt
+├── library/
+│   ├── ObserveFavorites.kt
+│   └── ObserveFavoriteStatus.kt
+└── summary/
+    └── ObserveSummary.kt
+```
+
+```kotlin Example Interactor
+class UpdateHomepage @Inject constructor(
+    private val dispatchers: CoroutineDispatchers,
+    private val homepageRepository: HomepageRepository,
+    private val itemRepository: ItemRepository,
+    private val buildRemoteQuery: BuildRemoteQuery,
+) : Interactor<Unit>() {
+
+    override suspend fun doWork(params: Unit) {
+        withContext(dispatchers.io) {
+            val unFetchedIds = homepageRepository.getHomepageIds()
+                .map { ids -> ids.filter { !itemRepository.exists(it) } }
+
+            unFetchedIds.forEach { ids ->
+                if (ids.isNotEmpty()) {
+                    val query = ArchiveQuery().booksByIdentifiers(ids)
+                    val items = itemRepository.updateQuery(buildRemoteQuery(query))
+                    itemRepository.saveItems(items.filterNot { it.isInappropriate })
+                }
+            }
+        }
+    }
+}
+```
+</CodeGroup>
+
+### UI Modules
+
+Feature-based UI modules using Jetpack Compose.
+
+<CardGroup cols={2}>
+  <Card title="ui:auth" icon="lock">
+    Authentication screens
+    - Sign in/Sign up
+    - Google authentication
+    - Password reset
+  </Card>
+  
+  <Card title="ui:homepage" icon="home">
+    Main homepage
+    - Featured collections
+    - Recent items
+    - Recommendations
+  </Card>
+  
+  <Card title="ui:search" icon="magnifying-glass">
+    Search functionality
+    - Query builder
+    - Filters (subject, creator, language)
+    - Search history
+  </Card>
+  
+  <Card title="ui:library" icon="book">
+    User library
+    - Favorites
+    - Downloads
+    - Reading history
+  </Card>
+  
+  <Card title="ui:item:detail" icon="circle-info">
+    Item details
+    - Metadata display
+    - Files list
+    - Actions (favorite, download, share)
+  </Card>
+  
+  <Card title="ui:reader" icon="book-open">
+    Readers (epub, pdf, online)
+    - PDF reader
+    - EPUB reader
+    - Online text reader
+  </Card>
+  
+  <Card title="ui:profile" icon="user">
+    User profile
+    - Account settings
+    - Preferences
+    - Feedback
+  </Card>
+  
+  <Card title="ui:components" icon="puzzle-piece">
+    Shared UI components
+    - Reusable composables
+    - Item cards
+    - Common widgets
+  </Card>
+</CardGroup>
+
+## Module Dependencies
+
+The app module brings everything together:
+
+<CodeGroup>
+```kotlin app/build.gradle.kts
+dependencies {
+    // Base
+    implementation(projects.base.domain)
+    
+    // Core modules
+    implementation(projects.core.analytics)
+    implementation(projects.core.downloader)
+    implementation(projects.core.networking)
+    implementation(projects.core.play)
+    implementation(projects.core.remoteConfig)
+    
+    // Data modules
+    implementation(projects.data.database)
+    implementation(projects.data.platform)
+    implementation(projects.data.prefs)
+    implementation(projects.data.repo)
+    
+    // Domain
+    implementation(projects.domain)
+    
+    // Navigation
+    implementation(projects.navigation)
+    
+    // UI modules
+    implementation(projects.ui.auth)
+    implementation(projects.ui.common)
+    implementation(projects.ui.components)
+    implementation(projects.ui.downloader)
+    implementation(projects.ui.homepage)
+    implementation(projects.ui.item.detail)
+    implementation(projects.ui.library)
+    implementation(projects.ui.profile)
+    implementation(projects.ui.reader.epub)
+    implementation(projects.ui.reader.online)
+    implementation(projects.ui.reader.pdf)
+    implementation(projects.ui.search)
+    implementation(projects.ui.theme)
+    // ... more UI modules
+}
+```
+</CodeGroup>
+
+## Dependency Flow
+
+Modules follow a strict dependency hierarchy:
+
+```
+app
+ ├─► ui:* (UI feature modules)
+ │    ├─► domain (business logic)
+ │    │    └─► data:repo (repositories)
+ │    │         └─► data:database (Room)
+ │    ├─► navigation
+ │    └─► ui:components (shared UI)
+ │         └─► ui:theme
+ ├─► core:* (core functionality)
+ └─► base:domain (foundation)
+```
+
+<Check>**Lower layers never depend on higher layers**, ensuring clean architecture.</Check>
+
+## Kotlin Multiplatform Modules
+
+Modules marked with `// kmp` are shared between Android and Desktop:
+
+- All `data:*` modules (database, models, prefs, repo, platform)
+- `base:domain`
+- `domain`
+- `core:*` modules
+- Some `ui:*` modules (common, components, theme, homepage, reader, etc.)
+
+This allows significant code reuse across platforms while maintaining platform-specific implementations where needed.
+
+## Build Configuration
+
+Kafka uses Gradle convention plugins for consistent build configuration:
+
+```
+gradle/build-logic/
+├── convention/
+│   ├── com.kafka.compose
+│   ├── com.kafka.kotlin.android
+│   └── com.kafka.kotlin.multiplatform
+```
+
+These plugins are applied to modules to provide consistent:
+- Kotlin/Compose compiler settings
+- Android SDK versions
+- Dependency versions
+- Build optimizations

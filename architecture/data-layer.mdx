@@ -1,0 +1,696 @@
+---
+title: 'Data Layer Architecture'
+description: 'Repository pattern, DAOs, Room database, and data management in Kafka'
+---
+
+Kafka's data layer implements the **Repository Pattern** with Room database for local persistence and Ktor for remote data sources. The architecture ensures a single source of truth while supporting offline-first functionality.
+
+## Data Layer Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Domain Layer                             │
+│              (Interactors & Observers)                       │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Repositories                               │
+│          (Single Source of Truth)                            │
+└──────────┬─────────────────────────┬────────────────────────┘
+           │                         │
+           ▼                         ▼
+    ┌──────────────┐         ┌──────────────┐
+    │  Local Data  │         │ Remote Data  │
+    │    Source    │         │    Source    │
+    │              │         │              │
+    │  Room DAOs   │         │ Ktor Client  │
+    │  DataStore   │         │  Firestore   │
+    └──────────────┘         └──────────────┘
+```
+
+## Repository Pattern
+
+### Repository Characteristics
+
+<CardGroup cols={2}>
+  <Card title="Single Source of Truth" icon="database">
+    Repositories expose a single Flow that combines local and remote data
+  </Card>
+  
+  <Card title="Offline First" icon="wifi-slash">
+    Data is cached locally and displayed immediately while refreshing from network
+  </Card>
+  
+  <Card title="Reactive" icon="arrows-rotate">
+    All data exposed as Kotlin Flows for reactive updates
+  </Card>
+  
+  <Card title="Scoped" icon="scope">
+    Repositories are `@ApplicationScope` singletons
+  </Card>
+</CardGroup>
+
+### Example Repository Implementation
+
+<CodeGroup>
+```kotlin HomepageRepository
+package com.kafka.data.feature.homepage
+
+@ApplicationScope
+class HomepageRepository @Inject constructor(
+    private val firestoreGraph: FirestoreGraph,
+    private val homepageMapper: HomepageMapper,
+    private val userDataRepository: UserDataRepository,
+    private val serializerModule: SerializersModule
+) {
+    // Reactive flow from Firestore
+    fun observeHomepageCollection() =
+        firestoreGraph.homepageCollection.snapshots
+            .flatMapLatest { it.toHomepage(userDataRepository.getUserCountry()) }
+
+    // Suspending function for one-time fetch
+    suspend fun getHomepageIds() = 
+        firestoreGraph.homepageCollection.get()
+            .documents
+            .map { documentSnapshot -> documentSnapshot.getHomepageData() }
+            .filter { it.enabled }
+            .sortedBy { it.index }
+            .mapNotNull { collection ->
+                when (collection) {
+                    is HomepageCollectionResponse.Column -> collection.itemIds.split(", ")
+                    is HomepageCollectionResponse.Row -> collection.itemIds.split(", ")
+                    is HomepageCollectionResponse.Grid -> collection.itemIds.split(", ")
+                    else -> null
+                }
+            }
+            .distinct()
+            .toList()
+
+    private fun QuerySnapshot.toHomepage(country: String?) =
+        documents
+            .map { it.getHomepageData() }
+            .filter { it.enabled }
+            .filter { it.filterByTopics(country) }
+            .sortedBy { it.index }
+            .run { homepageMapper.map(this) }
+            .map { it.toList() }
+}
+```
+
+```kotlin ItemRepository
+@ApplicationScope
+class ItemRepository @Inject constructor(
+    private val itemDao: ItemDao,
+    private val itemDetailDao: ItemDetailDao,
+    private val archiveService: ArchiveService,
+    private val itemMapper: ItemMapper,
+    private val dispatchers: CoroutineDispatchers
+) {
+    // Observe single item from database
+    fun observeItem(itemId: String): Flow<Item?> = 
+        itemDao.observe(itemId).flowOn(dispatchers.io)
+
+    // Observe multiple items
+    fun observeItems(itemIds: List<String>): Flow<List<Item>> = 
+        itemDao.observe(itemIds).flowOn(dispatchers.io)
+
+    // Observe item detail
+    fun observeItemDetail(itemId: String): Flow<ItemDetail> = 
+        itemDetailDao.observe(itemId).flowOn(dispatchers.io)
+
+    // Check if item exists in database
+    suspend fun exists(itemId: String): Boolean = 
+        withContext(dispatchers.io) {
+            itemDao.exists(itemId)
+        }
+
+    // Fetch from API and save to database
+    suspend fun updateQuery(query: String): List<Item> = 
+        withContext(dispatchers.io) {
+            val response = archiveService.query(query)
+            val items = response.docs.map { itemMapper.map(it) }
+            items
+        }
+
+    // Save items to database
+    suspend fun saveItems(items: List<Item>) = 
+        withContext(dispatchers.io) {
+            itemDao.insertAll(items)
+        }
+
+    // Update item detail with files
+    suspend fun updateItemDetail(itemId: String) = 
+        withContext(dispatchers.io) {
+            val response = archiveService.detail(itemId)
+            val detail = itemDetailMapper.map(response)
+            itemDetailDao.insert(detail)
+        }
+}
+```
+
+```kotlin FavoritesRepository
+@ApplicationScope  
+class FavoritesRepository @Inject constructor(
+    private val database: KafkaDatabase,
+    private val dispatchers: CoroutineDispatchers
+) {
+    private val favoritesDao = database.favoritesDao()
+    private val itemDao = database.itemDao()
+
+    // Observe all favorites with full item data
+    fun observeFavorites(limit: Int = 100): Flow<List<Item>> = 
+        favoritesDao.observeFavoriteIds(limit)
+            .flatMapLatest { favoriteIds ->
+                if (favoriteIds.isEmpty()) {
+                    flowOf(emptyList())
+                } else {
+                    itemDao.observe(favoriteIds)
+                }
+            }
+            .flowOn(dispatchers.io)
+
+    // Observe favorite status for single item
+    fun observeFavoriteStatus(itemId: String): Flow<Boolean> = 
+        favoritesDao.observeIsFavorite(itemId)
+            .map { it != null }
+            .flowOn(dispatchers.io)
+
+    // Add to favorites
+    suspend fun addFavorite(itemId: String) = 
+        withContext(dispatchers.io) {
+            favoritesDao.insert(
+                FavoriteItem(itemId = itemId, createdAt = System.currentTimeMillis())
+            )
+        }
+
+    // Remove from favorites  
+    suspend fun removeFavorite(itemId: String) = 
+        withContext(dispatchers.io) {
+            favoritesDao.deleteByItemId(itemId)
+        }
+}
+```
+</CodeGroup>
+
+## Room Database
+
+Kafka uses Room for local data persistence with a well-structured database schema.
+
+### Database Configuration
+
+<CodeGroup>
+```kotlin KafkaRoomDatabase
+package com.kafka.data.db
+
+@Database(
+    entities = [
+        ItemDetail::class,
+        File::class,
+        Item::class,
+        QueueEntity::class,
+        RecentSearch::class,
+        RecentTextItem::class,
+        RecentAudioItem::class,
+        DownloadRequest::class,
+    ],
+    version = 9,
+    exportSchema = true,
+    autoMigrations = [
+        AutoMigration(from = 3, to = 4, spec = UserRemovalMigration::class),
+        AutoMigration(from = 4, to = 5, spec = RecentAudioMigration::class),
+        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 8, to = 9, spec = DownloadRequestsMigration::class),
+    ],
+)
+@ConstructedBy(KafkaDatabaseConstructor::class)
+@TypeConverters(AppTypeConverters::class)
+abstract class KafkaRoomDatabase : RoomDatabase(), KafkaDatabase {
+    @DeleteTable(tableName = "user")
+    class UserRemovalMigration : AutoMigrationSpec
+    
+    @RenameColumn(tableName = "recent_audio", fromColumnName = "fileId", toColumnName = "albumId")
+    class RecentAudioMigration : AutoMigrationSpec
+    
+    @DeleteColumn(tableName = "download_requests", columnName = "created_at")
+    @DeleteColumn(tableName = "Item", columnName = "genre")
+    class DownloadRequestsMigration : AutoMigrationSpec
+}
+
+interface KafkaDatabase {
+    fun itemDetailDao(): ItemDetailDao
+    fun fileDao(): FileDao
+    fun itemDao(): ItemDao
+    fun recentSearchDao(): RecentSearchDao
+    fun recentTextDao(): RecentTextDao
+    fun recentAudioDao(): RecentAudioDao
+    fun downloadRequestsDao(): DownloadRequestsDao
+}
+```
+
+```kotlin Type Converters
+class AppTypeConverters {
+    @TypeConverter
+    fun fromStringList(value: List<String>?): String? {
+        return value?.joinToString(",")
+    }
+
+    @TypeConverter
+    fun toStringList(value: String?): List<String>? {
+        return value?.split(",")?.filter { it.isNotEmpty() }
+    }
+}
+```
+</CodeGroup>
+
+### Entity Definitions
+
+<CodeGroup>
+```kotlin Item Entity
+package com.kafka.data.entities
+
+@Entity
+data class Item(
+    @PrimaryKey val itemId: String = "",
+    @Embedded(prefix = "creator_") val creator: Creator? = null,
+    val language: List<String>? = null,
+    val title: String? = null,
+    val description: String? = null,
+    val mediaType: String? = null,
+    val coverImage: String? = null,
+    val collection: List<String>? = null,
+    val subject: String? = null,
+    val uploader: String? = null,
+    val position: Int = 0,
+    val rating: Double? = null,
+) : BaseEntity {
+    val isAudio: Boolean
+        get() = mediaType == "audio"
+
+    val isInappropriate: Boolean
+        get() = collection?.contains("no-preview") == true
+}
+
+data class Creator(val id: String, val name: String)
+```
+
+```kotlin ItemDetail Entity  
+@Entity(tableName = "item_detail")
+data class ItemDetail(
+    @PrimaryKey val itemId: String = "",
+    val title: String? = null,
+    val description: String? = null,
+    val creator: String? = null,
+    val files: List<File>? = null,
+    val metadata: Metadata? = null,
+    val updatedAt: Long = System.currentTimeMillis()
+) : BaseEntity
+```
+
+```kotlin RecentTextItem Entity
+@Entity(tableName = "recent_text")
+data class RecentTextItem(
+    @PrimaryKey val itemId: String = "",
+    val fileId: String = "",
+    val currentPage: Int = 0,
+    val totalPages: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+) : BaseEntity
+```
+
+```kotlin FavoriteItem Entity
+@Entity(tableName = "favorites")
+data class FavoriteItem(
+    @PrimaryKey val itemId: String,
+    val createdAt: Long = System.currentTimeMillis()
+) : BaseEntity
+```
+</CodeGroup>
+
+### DAO Implementations
+
+DAOs extend `EntityDao` for common CRUD operations.
+
+<CodeGroup>
+```kotlin Base EntityDao
+interface EntityDao<in E : BaseEntity> {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: E): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(vararg entity: E)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(entities: List<E>)
+
+    @Update(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun update(entity: E)
+}
+```
+
+```kotlin ItemDao
+@Dao
+abstract class ItemDao : EntityDao<Item> {
+    @RawQuery(observedEntities = [Item::class])
+    abstract fun observeQueryItems(query: RoomRawQuery): Flow<List<Item>>
+
+    @Query("select * from item where itemId = :itemId")
+    abstract suspend fun get(itemId: String): Item
+
+    @Query("select * from item where itemId = :itemId")
+    abstract fun observe(itemId: String): Flow<Item?>
+
+    @Query("select * from item where itemId IN (:itemIds)")
+    abstract suspend fun get(itemIds: List<String>): List<Item>
+
+    @Query("select * from item where itemId IN (:itemIds)")
+    abstract fun observe(itemIds: List<String>): Flow<List<Item>>
+
+    @Query("SELECT EXISTS(SELECT * FROM item where itemId = :itemId)")
+    abstract suspend fun exists(itemId: String): Boolean
+
+    @Query("delete from item")
+    abstract suspend fun deleteAll()
+}
+```
+
+```kotlin RecentsDao
+@Dao
+abstract class RecentTextDao : EntityDao<RecentTextItem> {
+    @Query("""
+        SELECT * FROM recent_text 
+        ORDER BY updatedAt DESC 
+        LIMIT :limit
+    """)
+    abstract fun observeRecentItems(limit: Int): Flow<List<RecentTextItem>>
+
+    @Query("SELECT * FROM recent_text WHERE itemId = :itemId")
+    abstract fun observe(itemId: String): Flow<RecentTextItem?>
+
+    @Query("DELETE FROM recent_text WHERE itemId = :itemId")
+    abstract suspend fun deleteById(itemId: String)
+
+    @Query("DELETE FROM recent_text")
+    abstract suspend fun deleteAll()
+
+    @Query("""
+        UPDATE recent_text 
+        SET currentPage = :page, updatedAt = :timestamp 
+        WHERE itemId = :itemId
+    """)
+    abstract suspend fun updatePage(itemId: String, page: Int, timestamp: Long)
+}
+```
+
+```kotlin ItemDetailDao  
+@Dao
+abstract class ItemDetailDao : EntityDao<ItemDetail> {
+    @Query("SELECT * FROM item_detail WHERE itemId = :itemId")
+    abstract fun observe(itemId: String): Flow<ItemDetail>
+
+    @Query("SELECT * FROM item_detail WHERE itemId = :itemId")
+    abstract suspend fun get(itemId: String): ItemDetail?
+
+    @Transaction
+    @Query("SELECT * FROM item_detail WHERE itemId IN (:itemIds)")
+    abstract fun observeItemsWithFiles(itemIds: List<String>): Flow<List<ItemDetail>>
+
+    @Query("DELETE FROM item_detail WHERE itemId = :itemId")
+    abstract suspend fun delete(itemId: String)
+}
+```
+</CodeGroup>
+
+## Remote Data Sources
+
+### Ktor Client for Archive.org API
+
+<CodeGroup>
+```kotlin ArchiveService
+interface ArchiveService {
+    suspend fun query(query: String): SearchResponse
+    suspend fun detail(itemId: String): ItemDetailResponse
+    suspend fun search(
+        query: String,
+        page: Int = 1,
+        rows: Int = 50
+    ): SearchResponse
+}
+
+@ApplicationScope
+class ArchiveServiceImpl @Inject constructor(
+    private val httpClient: HttpClient,
+    private val baseUrl: String
+) : ArchiveService {
+    
+    override suspend fun query(query: String): SearchResponse {
+        return httpClient.get("$baseUrl/advancedsearch.php") {
+            parameter("q", query)
+            parameter("output", "json")
+            parameter("rows", 50)
+        }.body()
+    }
+
+    override suspend fun detail(itemId: String): ItemDetailResponse {
+        return httpClient.get("$baseUrl/metadata/$itemId") {
+            parameter("output", "json")
+        }.body()
+    }
+}
+```
+
+```kotlin Ktor Client Setup
+fun createHttpClient(): HttpClient = HttpClient(Java) {
+    install(ContentNegotiation) {
+        json(Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+        })
+    }
+    
+    install(Logging) {
+        logger = Logger.DEFAULT
+        level = LogLevel.INFO
+    }
+    
+    install(HttpTimeout) {
+        requestTimeoutMillis = 30_000
+        connectTimeoutMillis = 30_000
+    }
+}
+```
+</CodeGroup>
+
+### Firestore for Remote Config
+
+<CodeGroup>
+```kotlin FirestoreGraph
+@ApplicationScope
+class FirestoreGraph @Inject constructor(
+    private val firestore: FirebaseFirestore
+) {
+    val homepageCollection: CollectionReference
+        get() = firestore.collection("homepage_v2")
+
+    val configCollection: CollectionReference
+        get() = firestore.collection("config")
+
+    val recommendationsCollection: CollectionReference
+        get() = firestore.collection("recommendations")
+}
+```
+
+```kotlin Repository with Firestore
+@ApplicationScope
+class HomepageRepository @Inject constructor(
+    private val firestoreGraph: FirestoreGraph,
+    private val homepageMapper: HomepageMapper
+) {
+    fun observeHomepageCollection() =
+        firestoreGraph.homepageCollection.snapshots  // Real-time updates
+            .flatMapLatest { snapshot ->
+                snapshot.documents
+                    .map { it.data<HomepageCollectionResponse>() }
+                    .filter { it.enabled }
+                    .sortedBy { it.index }
+                    .run { homepageMapper.map(this) }
+            }
+}
+```
+</CodeGroup>
+
+## DataStore for Preferences
+
+Kafka uses DataStore for type-safe preference storage.
+
+<CodeGroup>
+```kotlin PreferencesStore
+@ApplicationScope
+class PreferencesStore @Inject constructor(
+    private val dataStore: DataStore<Preferences>
+) {
+    private val autoDownloadKey = booleanPreferencesKey("auto_download")
+    private val useOnlineReaderKey = booleanPreferencesKey("use_online_reader")
+    private val themeKey = stringPreferencesKey("theme")
+
+    val autoDownload: Flow<Boolean> = dataStore.data
+        .map { it[autoDownloadKey] ?: false }
+
+    suspend fun setAutoDownload(enabled: Boolean) {
+        dataStore.edit { it[autoDownloadKey] = enabled }
+    }
+
+    val useOnlineReader: Flow<Boolean> = dataStore.data
+        .map { it[useOnlineReaderKey] ?: false }
+
+    suspend fun setUseOnlineReader(enabled: Boolean) {
+        dataStore.edit { it[useOnlineReaderKey] = enabled }
+    }
+}
+```
+
+```kotlin Observer for Preferences
+class ObserveAutoDownload @Inject constructor(
+    private val preferencesStore: PreferencesStore
+) : SubjectInteractor<Unit, Boolean>() {
+    override fun createObservable(params: Unit): Flow<Boolean> {
+        return preferencesStore.autoDownload
+    }
+}
+```
+</CodeGroup>
+
+## Data Mapping
+
+Mappers transform data between layers (network → database → domain).
+
+<CodeGroup>
+```kotlin ItemMapper
+@ApplicationScope
+class ItemMapper @Inject constructor() {
+    fun map(doc: Doc): Item {
+        return Item(
+            itemId = doc.identifier,
+            title = doc.title,
+            description = doc.description,
+            creator = doc.creator?.let { Creator(it, it) },
+            mediaType = doc.mediatype,
+            coverImage = doc.identifier?.let { buildCoverUrl(it) },
+            language = doc.language,
+            collection = doc.collection,
+            subject = doc.subject?.firstOrNull(),
+            rating = doc.downloads?.toDoubleOrNull()
+        )
+    }
+
+    private fun buildCoverUrl(itemId: String) = 
+        "https://archive.org/services/img/$itemId"
+}
+```
+
+```kotlin HomepageMapper
+@ApplicationScope
+class HomepageMapper @Inject constructor(
+    private val itemDao: ItemDao
+) {
+    suspend fun map(collections: List<HomepageCollectionResponse>): List<HomepageCollection> {
+        return collections.mapNotNull { collection ->
+            when (collection) {
+                is HomepageCollectionResponse.Row -> mapRow(collection)
+                is HomepageCollectionResponse.Grid -> mapGrid(collection)
+                is HomepageCollectionResponse.Column -> mapColumn(collection)
+                is HomepageCollectionResponse.FeaturedItem -> mapFeatured(collection)
+                else -> null
+            }
+        }
+    }
+
+    private suspend fun mapRow(row: HomepageCollectionResponse.Row): HomepageCollection.Row {
+        val itemIds = row.itemIds.split(", ")
+        val items = itemDao.get(itemIds)
+        return HomepageCollection.Row(
+            labels = row.labels.split(", "),
+            items = items,
+            clickable = row.clickable
+        )
+    }
+}
+```
+</CodeGroup>
+
+## Data Flow Example
+
+Complete data flow from UI to database:
+
+```
+User Action (Homepage Screen)
+      |
+      ▼
+ViewModel.updateItems()
+      |
+      ▼
+UpdateHomepage Interactor
+      |
+      ▼
+HomepageRepository.getHomepageIds()
+      |
+      ▼
+Firestore (Remote)
+      |
+      ▼
+ItemRepository.updateQuery()
+      |
+      ▼
+ArchiveService (Ktor)
+      |
+      ▼
+ItemMapper.map()
+      |
+      ▼
+ItemDao.insertAll()
+      |
+      ▼
+Room Database
+      |
+      ▼
+ItemDao.observe() (Flow)
+      |
+      ▼
+ObserveHomepage (Observer)
+      |
+      ▼
+ViewModel.state (StateFlow)
+      |
+      ▼
+Composable UI
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Single Source of Truth" icon="database">
+    Always read from database, never directly from network
+  </Card>
+  
+  <Card title="Offline First" icon="wifi-slash">
+    Cache data locally and display immediately
+  </Card>
+  
+  <Card title="Flow-Based" icon="water">
+    Use Flow for reactive data streams
+  </Card>
+  
+  <Card title="Coroutine Context" icon="arrows-spin">
+    Use `withContext(dispatchers.io)` for database operations
+  </Card>
+  
+  <Card title="Mappers" icon="repeat">
+    Transform data at repository layer
+  </Card>
+  
+  <Card title="Error Handling" icon="shield">
+    Handle errors in repositories, expose via Flow
+  </Card>
+</CardGroup>
