@@ -1,0 +1,107 @@
+{
+  "projectType": "saas",
+  "projectName": "Kafka",
+  "projectDescription": "A free, open-source Android app for reading and listening to millions of books from archive.org",
+  "theme": "almond",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#7C3AED",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/audio-player",
+              "features/pdf-reader",
+              "features/epub-reader",
+              "features/library-management",
+              "features/search-and-filters",
+              "features/downloads",
+              "features/user-authentication"
+            ]
+          },
+          {
+            "group": "User Guide",
+            "pages": [
+              "guide/browsing-content",
+              "guide/playing-audiobooks",
+              "guide/reading-books",
+              "guide/managing-favorites",
+              "guide/offline-usage"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/modules",
+              "architecture/mvvm-pattern",
+              "architecture/data-layer",
+              "architecture/ui-layer"
+            ]
+          },
+          {
+            "group": "Core Components",
+            "pages": [
+              "components/audio-playback",
+              "components/pdf-rendering",
+              "components/epub-parsing",
+              "components/download-manager",
+              "components/database",
+              "components/networking"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/building",
+              "development/testing",
+              "development/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "41 million books and audiobooks from archive.org",
+    "Audio player with background playback, sleep timer, and speed controls",
+    "PDF and EPUB readers with continue-reading support",
+    "Offline downloads with free sharing",
+    "Library management with favorites and recent items",
+    "Advanced search with filters by genre, language, and creator",
+    "Material3 design with dark theme support",
+    "Built with Jetpack Compose and Kotlin Multiplatform"
+  ],
+  "publicApiSurface": [
+    "com.kafka.user.MainActivity",
+    "com.kafka.homepage.HomepageViewModel",
+    "com.kafka.reader.pdf.PdfReaderViewModel",
+    "com.kafka.reader.epub.EpubReaderViewModel",
+    "com.kafka.domain.interactors.UpdateHomepage",
+    "com.kafka.domain.interactors.UpdateFavorite",
+    "com.kafka.domain.interactors.SearchQueryItems",
+    "com.kafka.data.dao.ItemDao",
+    "com.kafka.data.dao.FileDao",
+    "tm.alashow.datmusic.downloader.Downloader",
+    "com.kafka.auth.AuthViewModel",
+    "com.kafka.navigation.Navigator"
+  ]
+}
